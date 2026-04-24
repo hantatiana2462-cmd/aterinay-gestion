@@ -575,9 +575,20 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
     );
   }, [selectedDate]);
 
-  const deleteDelivery = useCallback((id: number) => {
-    setDeliveries((prev) => prev.filter((d) => d.id !== id));
-  }, []);
+  const deleteDelivery = useCallback(async (id: number) => {
+  const { error } = await supabase
+    .from("deliveries")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.log("SUPABASE DELETE ERROR:", error);
+    alert("Erreur Supabase : la livraison n'a pas ete supprimee.");
+    return;
+  }
+
+  setDeliveries((prev) => prev.filter((d) => d.id !== id));
+}, []);
 
   const addRider = useCallback(() => {
     const cleaned = newRiderName.trim().toLowerCase();
