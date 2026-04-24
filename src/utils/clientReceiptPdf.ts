@@ -143,11 +143,32 @@ doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")}`, 14, 47);
 
 autoTable(doc, {
   startY: 64,
-    head: [["Lieu", "Statut", "Prix colis", "Detail calcul", "Total ligne"]],
-    body: deliveryRows.map((r) => [r.lieu, r.statut, r.prix, r.detail, r.total]),
-    styles: { fontSize: 10 },
-    headStyles: { fillColor: [49, 92, 253] },
-  });
+  head: [["Lieu", "Statut", "Prix colis", "Detail calcul", "Total ligne"]],
+  body: deliveryRows.map((r) => [r.lieu, r.statut, r.prix, r.detail, r.total]),
+  styles: { fontSize: 10 },
+  headStyles: { fillColor: [49, 92, 253] },
+
+  didParseCell: (data) => {
+    if (data.section !== "body") return;
+
+    const statut = deliveryRows[data.row.index]?.statut;
+
+    if (statut === "Faite") {
+      data.cell.styles.fillColor = [220, 252, 231];
+      data.cell.styles.textColor = [22, 101, 52];
+    }
+
+    if (statut === "Non faite") {
+      data.cell.styles.fillColor = [254, 226, 226];
+      data.cell.styles.textColor = [153, 27, 27];
+    }
+
+    if (statut === "En cours") {
+      data.cell.styles.fillColor = [255, 237, 213];
+      data.cell.styles.textColor = [154, 52, 18];
+    }
+  },
+});
 
   let y = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 60;
   y += 10;
