@@ -77,7 +77,7 @@ export function generateRiderDeliveryListTicketPdf(params: {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [80, 220],
+    format: [80, Math.max(220, 80 + deliveries.length * 45)],
   });
 
   const margin = 5;

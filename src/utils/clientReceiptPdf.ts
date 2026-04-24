@@ -188,7 +188,7 @@ export async function generateClientReceiptTicketPdf(params: {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [80, Math.max(220, 35 + deliveries.length * 32)],
+    format: [80, Math.max(220, 70 + deliveries.length * 32 + adjustments.length * 8)],
   });
 
   const logoData = await loadImageData(logo);
