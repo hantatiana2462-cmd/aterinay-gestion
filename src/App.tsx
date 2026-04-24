@@ -521,35 +521,51 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
   }, [form]);
 
   const updateDeliveryField = useCallback(
-    (id: number, field: keyof Delivery, value: string | number) => {
-      setDeliveries((prev) =>
-        prev.map((d) => {
-          if (d.id !== id) return d;
-          const updated = { ...d, [field]: value } as Delivery;
+  async (id: number, field: keyof Delivery, value: string | number) => {
+    const current = deliveries.find((d) => d.id === id);
+    if (!current) return;
 
-          if (field === "client") {
-            updated.client = String(value).trim().toLowerCase();
-            updated.clientType = isPartnerClient(updated.client)
-              ? "entreprise"
-              : updated.clientType;
-          }
+    const updated = { ...current, [field]: value } as Delivery;
 
-          if (field === "clientType") {
-            updated.clientType = value as ClientType;
-          }
+    if (field === "client") {
+      updated.client = String(value).trim().toLowerCase();
+      updated.clientType = isPartnerClient(updated.client)
+        ? "entreprise"
+        : updated.clientType;
+    }
 
-          if (field === "status") {
-            if (value !== "non_faite") updated.raison = "";
-            if (value === "non_faite") updated.retours = 1;
-            if (value === "en_cours") updated.retours = 0;
-          }
+    if (field === "clientType") {
+      updated.clientType = value as ClientType;
+    }
 
-          return updated;
-        })
-      );
-    },
-    []
-  );
+    if (field === "status") {
+      if (value !== "non_faite") updated.raison = "";
+      if (value === "non_faite") updated.retours = 1;
+      if (value === "en_cours") updated.retours = 0;
+    }
+
+    const { id: _id, ...deliveryToUpdate } = updated;
+
+    const { data, error } = await supabase
+      .from("deliveries")
+      .update(deliveryToUpdate)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      console.log("SUPABASE UPDATE ERROR:", error);
+      alert("Erreur Supabase : la modification n'a pas ete enregistree.");
+      return;
+    }
+
+    setDeliveries((prev) =>
+      prev.map((d) => (d.id === id ? (data as Delivery) : d))
+    );
+  },
+  [deliveries]
+);
+          
 
   const togglePaymentReceived = useCallback((id: number) => {
     setDeliveries((prev) =>
