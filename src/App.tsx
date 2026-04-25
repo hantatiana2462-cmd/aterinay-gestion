@@ -112,13 +112,43 @@ const DEFAULT_DELIVERIES: Delivery[] = [
 ];
 
 export default function App() {
+  const [assistantQuestion, setAssistantQuestion] = useState("");
+  const [assistantAnswer, setAssistantAnswer] = useState("");
+  const [assistantLoading, setAssistantLoading] = useState(false); 
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
-
   const [view, setView] = useState<AppView>("livreurs");
   const [selectedDate, setSelectedDate] = useState(today);
   const [searchText, setSearchText] = useState("");
+
+  const askAssistant = async () => {
+  if (!assistantQuestion) return;
+
+  setAssistantLoading(true);
+  setAssistantAnswer("");
+
+  try {
+    const res = await fetch("/api/assistant", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        question: assistantQuestion,
+        context: deliveries, // ⚠️ important
+      }),
+    });
+
+    const data = await res.json();
+    setAssistantAnswer(data.answer);
+  } catch (err) {
+    console.error(err);
+    setAssistantAnswer("Erreur assistant");
+  }
+
+  setAssistantLoading(false);
+};
 
   const [selectedRiderDetails, setSelectedRiderDetails] = useState<
     string | null
@@ -921,6 +951,30 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
         </div>
       </header>
 
+      <div style={{ padding: 15, borderTop: "2px solid #ddd" }}>
+  <h3>Assistant IA</h3>
+
+  <input
+    type="text"
+    placeholder="Pose ta question..."
+    value={assistantQuestion}
+    onChange={(e) => setAssistantQuestion(e.target.value)}
+    style={{ width: "100%", padding: 10, marginBottom: 10 }}
+  />
+
+  <button onClick={askAssistant}>
+    Demander
+  </button>
+
+  {assistantLoading && <p>Chargement...</p>}
+
+  {assistantAnswer && (
+    <div style={{ marginTop: 10, background: "#f5f5f5", padding: 10 }}>
+      {assistantAnswer}
+    </div>
+  )}
+</div>
+
       {view === "livreurs" && (
         <LivreursView
           riders={riders}
@@ -1092,6 +1146,8 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       {view === "aterinay" && (
         <AterinayView aterinayStats={aterinayStats} />
       )}
+
+      
 
       {confirmRiderId !== null && (
         <div className="modalOverlay">
