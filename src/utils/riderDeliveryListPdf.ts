@@ -68,7 +68,7 @@ export async function generateRiderDeliveryListPdf(params: {
   const safeDate = (selectedDate || new Date().toISOString().slice(0, 10)).replaceAll("/", "-");
   doc.save(`liste_livraison_${safeRider}_${safeDate}.pdf`);
 }
-export function generateRiderDeliveryListTicketPdf(params: {
+export async function generateRiderDeliveryListTicketPdf(params: {
   riderName: string;
   deliveries: Delivery[];
 }) {
@@ -83,10 +83,16 @@ export function generateRiderDeliveryListTicketPdf(params: {
   const margin = 5;
   let y = 8;
 
-  doc.setFontSize(14);
-  doc.text("Aterinay", margin, y);
+  const logoData = await loadImageData(logo);
 
-  y += 6;
+// logo (petit pour ticket)
+doc.addImage(logoData, "PNG", margin, y, 12, 12);
+
+// texte à côté du logo
+doc.setFontSize(12);
+doc.text("Aterinay", margin + 14, y + 5);
+
+  y += 14;
   doc.setFontSize(10);
   doc.text("Liste livraison livreur", margin, y);
 

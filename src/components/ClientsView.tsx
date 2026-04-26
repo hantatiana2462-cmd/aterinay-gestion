@@ -186,6 +186,29 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
     </button>
   </div>
 </div>
+
+{clientAdjustments.length > 0 && (
+  <div>
+    <h3>Ajustements</h3>
+
+    {clientAdjustments.map((adjustment) => (
+      <div key={adjustment.id}>
+        <span>{adjustment.label}</span>
+        <span>{formatAr(adjustment.amount)}</span>
+
+        <button
+          onClick={() =>
+            setClientAdjustments((prev) =>
+              prev.filter((a) => a.id !== adjustment.id)
+            )
+          }
+        >
+          Supprimer
+        </button>
+      </div>
+    ))}
+  </div>
+)}
           <ClientReceiptView
   clientName={selectedClientGroup.client}
   deliveries={selectedClientGroup.rows}
