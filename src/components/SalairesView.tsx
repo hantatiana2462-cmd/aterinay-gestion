@@ -1,17 +1,28 @@
-import { SalaryAdvance } from "../types";
-import { formatAr } from "../helpers";
+import { RiderPayroll, SalaryAdvance } from "../types";
+import { formatAr, normalizeAriaryInput } from "../helpers";
+import {
+  generatePayrollSlipPdf,
+  generatePayrollSummaryPdf,
+} from "../utils/payrollPdf";
 
-type PayrollStat = {
-  rider: string;
-  baseSalary: number;
+type PayrollStat = RiderPayroll & {
   advances: SalaryAdvance[];
-  recoveries: number;
   advancesTotal: number;
   recoveryAmount: number;
   totalSalary: number;
 };
 
 type AdvanceForm = { label: string; amount: string };
+type PayrollInfoField =
+  | "fullName"
+  | "cin"
+  | "role"
+  | "periodStart"
+  | "periodEnd"
+  | "paymentDate"
+  | "paymentMethod"
+  | "paymentReference"
+  | "notes";
 
 type Props = {
   payrollStats: PayrollStat[];
@@ -22,9 +33,18 @@ type Props = {
   onToggleRider: (rider: string) => void;
   onBaseSalaryChange: (rider: string, value: string) => void;
   onUpdateBaseSalary: (rider: string, amount: number) => void;
+  onPayrollInfoChange: (
+    rider: string,
+    field: PayrollInfoField,
+    value: string
+  ) => void;
   onAddRecovery: (rider: string) => void;
   onRemoveRecovery: (rider: string) => void;
-  onAdvanceFormChange: (rider: string, field: "label" | "amount", value: string) => void;
+  onAdvanceFormChange: (
+    rider: string,
+    field: "label" | "amount",
+    value: string
+  ) => void;
   onAddAdvance: (rider: string) => void;
   onDeleteAdvance: (rider: string, advanceId: number) => void;
 };
@@ -38,145 +58,358 @@ export default function SalairesView({
   onToggleRider,
   onBaseSalaryChange,
   onUpdateBaseSalary,
+  onPayrollInfoChange,
   onAddRecovery,
   onRemoveRecovery,
   onAdvanceFormChange,
   onAddAdvance,
   onDeleteAdvance,
 }: Props) {
+  const totalBase = payrollStats.reduce((sum, p) => sum + p.baseSalary, 0);
+  const totalAdvances = payrollStats.reduce((sum, p) => sum + p.advancesTotal, 0);
+  const totalRecoveries = payrollStats.reduce(
+    (sum, p) => sum + p.recoveryAmount,
+    0
+  );
+
   return (
     <section className="financePage">
       <div className="statsGrid compactStatsGrid">
         <div className="statCard compactStatCard">
-          <span>Total salaires</span>
+          <span>Total net a payer</span>
           <strong>{formatAr(totalSalaries)}</strong>
         </div>
         <div className="statCard compactStatCard">
-          <span>Livreurs</span>
-          <strong>{payrollStats.length}</strong>
+          <span>Salaires de base</span>
+          <strong>{formatAr(totalBase)}</strong>
+        </div>
+        <div className="statCard compactStatCard">
+          <span>Recuperations</span>
+          <strong>{formatAr(totalRecoveries)}</strong>
+        </div>
+        <div className="statCard compactStatCard">
+          <span>Avances deduites</span>
+          <strong>{formatAr(totalAdvances)}</strong>
         </div>
       </div>
 
       <section className="panel">
-        <h2>Salaires</h2>
+        <div className="panelHeaderRow">
+          <h2>Gestion des salaires</h2>
+          <button
+            className="secondaryBtn"
+            type="button"
+            onClick={() =>
+              generatePayrollSummaryPdf({ payrollStats, totalSalaries })
+            }
+          >
+            PDF global
+          </button>
+        </div>
 
-        <div className="groupList">
+        <div className="deliveryTableWrap">
+          <table className="deliveryTable">
+            <thead>
+              <tr>
+                <th>Employe</th>
+                <th>Base</th>
+                <th>Recup.</th>
+                <th>Avances</th>
+                <th>Net</th>
+                <th>Reception</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payrollStats.map((p) => (
+                <tr key={p.rider}>
+                  <td>
+                    <strong>{p.fullName || p.rider}</strong>
+                    <div className="deliveryDescription">{p.role || "Livreur"}</div>
+                  </td>
+                  <td>{formatAr(p.baseSalary)}</td>
+                  <td>{formatAr(p.recoveryAmount)}</td>
+                  <td>{formatAr(p.advancesTotal)}</td>
+                  <td>
+                    <strong>{formatAr(p.totalSalary)}</strong>
+                  </td>
+                  <td>{p.paymentDate || "-"}</td>
+                  <td>
+                    <button
+                      className="secondaryBtn"
+                      type="button"
+                      onClick={() => onToggleRider(p.rider)}
+                    >
+                      {openSalaryRider === p.rider ? "Fermer" : "Dossier"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="groupList" style={{ marginTop: 18 }}>
           {payrollStats.map((p) => {
             const isOpen = openSalaryRider === p.rider;
             const advanceForm = advanceForms[p.rider] || { label: "", amount: "" };
+            const salaryInput = baseSalaryInputs[p.rider] ?? String(p.baseSalary);
+
+            if (!isOpen) return null;
 
             return (
               <div className="riderGroup compactGroup" key={p.rider}>
                 <div className="riderGroupHeader compactHeader">
                   <div>
-                    <h3>{p.rider}</h3>
+                    <h3>{p.fullName || p.rider}</h3>
                     <p>
-                      Salaire : {formatAr(p.baseSalary)} ·
-                      Avance : {formatAr(p.advancesTotal)}
-                    </p>
-                    <p>
-                      Récupérations : {p.recoveries} · Total :{" "}
-                      {formatAr(p.totalSalary)}
+                      Net a payer : <strong>{formatAr(p.totalSalary)}</strong> ·{" "}
+                      Date reception : {p.paymentDate || "non renseignee"}
                     </p>
                   </div>
+                  <div className="actionGroup">
+                    <button
+                      className="primaryBtn"
+                      type="button"
+                      onClick={() => generatePayrollSlipPdf(p)}
+                    >
+                      Fiche PDF
+                    </button>
+                    <button
+                      className="secondaryBtn"
+                      type="button"
+                      onClick={() => onToggleRider(p.rider)}
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
 
+                <div className="editGrid">
+                  <div className="fieldBlock">
+                    <label>Nom complet</label>
+                    <input
+                      value={p.fullName || ""}
+                      placeholder="Nom et prenom"
+                      onChange={(e) =>
+                        onPayrollInfoChange(p.rider, "fullName", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Numero CIN</label>
+                    <input
+                      value={p.cin || ""}
+                      placeholder="Ex: 101 000 000 000"
+                      onChange={(e) =>
+                        onPayrollInfoChange(p.rider, "cin", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Poste</label>
+                    <input
+                      value={p.role || ""}
+                      placeholder="Livreur"
+                      onChange={(e) =>
+                        onPayrollInfoChange(p.rider, "role", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Mode de paiement</label>
+                    <select
+                      value={p.paymentMethod || "Especes"}
+                      onChange={(e) =>
+                        onPayrollInfoChange(
+                          p.rider,
+                          "paymentMethod",
+                          e.target.value
+                        )
+                      }
+                    >
+                      <option value="Especes">Especes</option>
+                      <option value="Mobile money">Mobile money</option>
+                      <option value="Virement">Virement</option>
+                      <option value="Cheque">Cheque</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="editGrid">
+                  <div className="fieldBlock">
+                    <label>Debut periode</label>
+                    <input
+                      type="date"
+                      value={p.periodStart || ""}
+                      onChange={(e) =>
+                        onPayrollInfoChange(
+                          p.rider,
+                          "periodStart",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Fin periode</label>
+                    <input
+                      type="date"
+                      value={p.periodEnd || ""}
+                      onChange={(e) =>
+                        onPayrollInfoChange(p.rider, "periodEnd", e.target.value)
+                      }
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Date de reception</label>
+                    <input
+                      type="date"
+                      value={p.paymentDate || ""}
+                      onChange={(e) =>
+                        onPayrollInfoChange(
+                          p.rider,
+                          "paymentDate",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="editGrid">
+                  <div className="fieldBlock">
+                    <label>Salaire global</label>
+                    <input
+                      inputMode="decimal"
+                      placeholder="Ex: 150 ou 150000"
+                      value={salaryInput}
+                      onChange={(e) => onBaseSalaryChange(p.rider, e.target.value)}
+                    />
+                  </div>
+                  <div className="fieldBlock">
+                    <label>Reference paiement</label>
+                    <input
+                      value={p.paymentReference || ""}
+                      placeholder="Numero recu, transaction..."
+                      onChange={(e) =>
+                        onPayrollInfoChange(
+                          p.rider,
+                          "paymentReference",
+                          e.target.value
+                        )
+                      }
+                    />
+                  </div>
                   <button
-                    className="secondaryBtn"
-                    onClick={() => onToggleRider(p.rider)}
+                    className="primaryBtn"
+                    type="button"
+                    onClick={() =>
+                      onUpdateBaseSalary(
+                        p.rider,
+                        Number(normalizeAriaryInput(salaryInput) || 0)
+                      )
+                    }
                   >
-                    {isOpen ? "Fermer" : "Détail"}
+                    Enregistrer salaire
                   </button>
                 </div>
 
-                {isOpen && (
-                  <div className="groupList">
-                    <div className="editGrid">
-                      <input
-                        type="number"
-                        placeholder="Salaire global"
-                        value={baseSalaryInputs[p.rider] ?? String(p.baseSalary)}
-                        onChange={(e) =>
-                          onBaseSalaryChange(p.rider, e.target.value)
-                        }
-                      />
-                      <button
-                        className="primaryBtn"
-                        onClick={() =>
-                          onUpdateBaseSalary(
-                            p.rider,
-                            Number(baseSalaryInputs[p.rider] ?? p.baseSalary)
-                          )
-                        }
-                      >
-                        Enregistrer
-                      </button>
-                      <div className="emptySlot"></div>
-                    </div>
+                <div className="statsGrid compactStatsGrid">
+                  <div className="statCard compactStatCard">
+                    <span>Base</span>
+                    <strong>{formatAr(p.baseSalary)}</strong>
+                  </div>
+                  <div className="statCard compactStatCard">
+                    <span>Recuperations</span>
+                    <strong>{formatAr(p.recoveryAmount)}</strong>
+                  </div>
+                  <div className="statCard compactStatCard">
+                    <span>Avances</span>
+                    <strong>{formatAr(p.advancesTotal)}</strong>
+                  </div>
+                  <div className="statCard compactStatCard totalCard">
+                    <span>Net a payer</span>
+                    <strong>{formatAr(p.totalSalary)}</strong>
+                  </div>
+                </div>
 
-                    <div className="paymentRow">
-                      <span>Compteur récupération : {p.recoveries}</span>
-                      <div className="actionGroup">
+                <div className="paymentRow">
+                  <span>Compteur recuperation : {p.recoveries}</span>
+                  <div className="actionGroup">
+                    <button
+                      className="secondaryBtn"
+                      type="button"
+                      onClick={() => onRemoveRecovery(p.rider)}
+                    >
+                      -1
+                    </button>
+                    <button
+                      className="primaryBtn"
+                      type="button"
+                      onClick={() => onAddRecovery(p.rider)}
+                    >
+                      +1 recuperation
+                    </button>
+                  </div>
+                </div>
+
+                <div className="financeEntryForm">
+                  <input
+                    placeholder="Libelle avance"
+                    value={advanceForm.label}
+                    onChange={(e) =>
+                      onAdvanceFormChange(p.rider, "label", e.target.value)
+                    }
+                  />
+                  <input
+                    inputMode="decimal"
+                    placeholder="Montant avance"
+                    value={advanceForm.amount}
+                    onChange={(e) =>
+                      onAdvanceFormChange(p.rider, "amount", e.target.value)
+                    }
+                  />
+                  <button
+                    className="primaryBtn"
+                    type="button"
+                    onClick={() => onAddAdvance(p.rider)}
+                  >
+                    Ajouter avance
+                  </button>
+                </div>
+
+                <textarea
+                  placeholder="Notes internes ou observation sur le paiement"
+                  value={p.notes || ""}
+                  onChange={(e) =>
+                    onPayrollInfoChange(p.rider, "notes", e.target.value)
+                  }
+                />
+
+                <div className="list">
+                  {p.advances.length === 0 ? (
+                    <div className="emptySmall">Aucune avance.</div>
+                  ) : (
+                    p.advances.map((a) => (
+                      <div className="moneyItem expenseItem" key={a.id}>
+                        <div>
+                          <strong>{a.label}</strong>
+                          <small>
+                            {(a.date || "Sans date") + " · " + formatAr(a.amount)}
+                          </small>
+                        </div>
                         <button
-                          className="secondaryBtn"
-                          onClick={() => onRemoveRecovery(p.rider)}
+                          className="deleteBtn"
+                          type="button"
+                          onClick={() => onDeleteAdvance(p.rider, a.id)}
                         >
-                          -1
-                        </button>
-                        <button
-                          className="primaryBtn"
-                          onClick={() => onAddRecovery(p.rider)}
-                        >
-                          +1 récupération
+                          Supprimer
                         </button>
                       </div>
-                    </div>
-
-                    <div className="financeEntryForm">
-                      <input
-                        placeholder="Description avance"
-                        value={advanceForm.label}
-                        onChange={(e) =>
-                          onAdvanceFormChange(p.rider, "label", e.target.value)
-                        }
-                      />
-                      <input
-                        type="number"
-                        placeholder="Montant avance"
-                        value={advanceForm.amount}
-                        onChange={(e) =>
-                          onAdvanceFormChange(p.rider, "amount", e.target.value)
-                        }
-                      />
-                      <button
-                        className="primaryBtn"
-                        onClick={() => onAddAdvance(p.rider)}
-                      >
-                        Ajouter avance
-                      </button>
-                    </div>
-
-                    <div className="list">
-                      {p.advances.length === 0 ? (
-                        <div className="emptySmall">Aucune avance.</div>
-                      ) : (
-                        p.advances.map((a) => (
-                          <div className="moneyItem expenseItem" key={a.id}>
-                            <div>
-                              <strong>{a.label}</strong>
-                              <small>{formatAr(a.amount)}</small>
-                            </div>
-                            <button
-                              className="deleteBtn"
-                              onClick={() => onDeleteAdvance(p.rider, a.id)}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
               </div>
             );
           })}

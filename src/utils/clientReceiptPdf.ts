@@ -25,6 +25,7 @@ const loadImageData = (src: string) =>
   });
 
 type PdfRow = {
+  retour: string;
   lieu: string;
   statut: string;
   raison: string;
@@ -37,6 +38,18 @@ const getStatusLabel = (status: Delivery["status"]) => {
   if (status === "faite") return "Faite";
   if (status === "non_faite") return "Non faite";
   return "En cours";
+};
+
+const getReceiptNote = (delivery: Delivery) => {
+  if (delivery.status === "non_faite") {
+    return delivery.raison.trim() || "-";
+  }
+
+  if (delivery.status === "faite") {
+    return delivery.description.trim() || "-";
+  }
+
+  return delivery.description.trim() || "-";
 };
 
 const buildReceiptRows = (deliveries: Delivery[]): PdfRow[] => {
@@ -75,12 +88,10 @@ const buildReceiptRows = (deliveries: Delivery[]): PdfRow[] => {
     }
 
     return {
+      retour: d.retours > 0 ? "R" : "-",
       lieu: d.lieu,
       statut: getStatusLabel(d.status),
-      raison:
-        d.status === "non_faite" && d.raison.trim()
-          ? d.raison.trim()
-          : "-",
+      raison: getReceiptNote(d),
       prix: formatAr(d.prix),
       detail,
       total: typeof total === "number" ? formatAr(total) : total,
@@ -148,8 +159,9 @@ doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")}`, 14, 47);
 
 autoTable(doc, {
   startY: 64,
-  head: [["Lieu", "Statut", "Raison", "Prix colis", "Detail calcul", "Total ligne"]],
+  head: [["R", "Lieu", "Statut", "Description / Raison", "Prix colis", "Detail calcul", "Total ligne"]],
   body: deliveryRows.map((r) => [
+    r.retour,
     r.lieu,
     r.statut,
     r.raison,
@@ -160,12 +172,13 @@ autoTable(doc, {
   styles: { fontSize: 9, cellPadding: 2 },
   headStyles: { fillColor: [49, 92, 253] },
   columnStyles: {
-    0: { cellWidth: 32 },
-    1: { cellWidth: 22 },
-    2: { cellWidth: 32 },
-    3: { cellWidth: 26 },
-    4: { cellWidth: 45 },
-    5: { cellWidth: 24 },
+    0: { cellWidth: 10, halign: "center" },
+    1: { cellWidth: 28 },
+    2: { cellWidth: 22 },
+    3: { cellWidth: 38 },
+    4: { cellWidth: 24 },
+    5: { cellWidth: 38 },
+    6: { cellWidth: 22 },
   },
 
   didParseCell: (data) => {
@@ -229,7 +242,7 @@ export async function generateClientReceiptTicketPdf(params: {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
-    format: [80, Math.max(220, 70 + deliveries.length * 32 + adjustments.length * 8)],
+    format: [80, Math.max(220, 80 + deliveries.length * 40 + adjustments.length * 8)],
   });
 
   const logoData = await loadImageData(logo);
@@ -313,6 +326,18 @@ export async function generateClientReceiptTicketPdf(params: {
 
     doc.text(`Prix: ${formatAr(d.prix)}`, margin + 2, y);
     y += 5;
+
+    if (d.retours > 0) {
+      doc.text("Retour: R", margin + 2, y);
+      y += 5;
+    }
+
+    const note = getReceiptNote(d);
+    if (note !== "-") {
+      const noteLines = doc.splitTextToSize(`Info: ${note}`, 66);
+      doc.text(noteLines, margin + 2, y);
+      y += noteLines.length * 4;
+    }
 
     doc.text(`Detail: ${detail}`, margin + 2, y);
     y += 5;

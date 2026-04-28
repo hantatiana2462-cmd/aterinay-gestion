@@ -26,6 +26,15 @@ export const INITIAL_RIDERS: Rider[] = [
 export const initialPayroll = (riders: Rider[]): RiderPayroll[] =>
   riders.map((r) => ({
     rider: r.name,
+    fullName: r.name,
+    cin: "",
+    role: "Livreur",
+    periodStart: "",
+    periodEnd: "",
+    paymentDate: "",
+    paymentMethod: "Especes",
+    paymentReference: "",
+    notes: "",
     baseSalary: 0,
     recoveries: 0,
     advances: [],

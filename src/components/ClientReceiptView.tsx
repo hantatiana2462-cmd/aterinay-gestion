@@ -89,9 +89,10 @@ export default function ClientReceiptView({
       <table className="receiptTable">
         <thead>
           <tr>
+            <th>R</th>
             <th>Lieu</th>
             <th>Statut</th>
-            <th>Raison</th>
+            <th>Description / Raison</th>
             <th>Prix</th>
             <th>Détail</th>
             <th>Total</th>
@@ -134,15 +135,17 @@ export default function ClientReceiptView({
               total = "—";
             }
 
+            const receiptNote =
+              d.status === "non_faite"
+                ? d.raison.trim() || "-"
+                : d.description.trim() || "-";
+
             return (
               <tr key={d.id}>
+                <td>{d.retours > 0 ? "R" : "-"}</td>
                 <td>{d.lieu}</td>
                 <td>{statusLabel(d.status)}</td>
-                <td>
-                  {d.status === "non_faite" && d.raison.trim()
-                    ? d.raison.trim()
-                    : "-"}
-                </td>
+                <td>{receiptNote}</td>
                 <td>{formatAr(d.prix)}</td>
                 <td>{detail}</td>
                 <td>{typeof total === "number" ? formatAr(total) : total}</td>

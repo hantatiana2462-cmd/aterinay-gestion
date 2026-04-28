@@ -54,12 +54,22 @@ export type PartnerPurchaseEntry = {
 
 export type SalaryAdvance = {
   id: number;
+  date?: string;
   label: string;
   amount: number;
 };
 
 export type RiderPayroll = {
   rider: string;
+  fullName?: string;
+  cin?: string;
+  role?: string;
+  periodStart?: string;
+  periodEnd?: string;
+  paymentDate?: string;
+  paymentMethod?: string;
+  paymentReference?: string;
+  notes?: string;
   baseSalary: number;
   recoveries: number;
   advances: SalaryAdvance[];

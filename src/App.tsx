@@ -523,6 +523,15 @@ export default function App() {
         (r) =>
           existing.get(r.name) ?? {
             rider: r.name,
+            fullName: r.name,
+            cin: "",
+            role: "Livreur",
+            periodStart: "",
+            periodEnd: "",
+            paymentDate: "",
+            paymentMethod: "Especes",
+            paymentReference: "",
+            notes: "",
             baseSalary: 0,
             recoveries: 0,
             advances: [],
@@ -685,14 +694,16 @@ export default function App() {
   const buildPartnerStats = useCallback(
     (partnerName: string, purchases: PartnerPurchaseEntry[]) => {
       const dailyRows = deliveriesForDate.filter(
-        (d) => d.client === partnerName && d.status === "faite"
+        (d) => d.client === partnerName
       );
       const monthlyRows = deliveriesForMonth.filter(
-        (d) => d.client === partnerName && d.status === "faite"
+        (d) => d.client === partnerName
       );
+      const dailyDoneRows = dailyRows.filter((d) => d.status === "faite");
+      const monthlyDoneRows = monthlyRows.filter((d) => d.status === "faite");
 
-      const dailyColis = dailyRows.reduce((sum, d) => sum + d.prix, 0);
-      const monthlyColis = monthlyRows.reduce((sum, d) => sum + d.prix, 0);
+      const dailyColis = dailyDoneRows.reduce((sum, d) => sum + d.prix, 0);
+      const monthlyColis = monthlyDoneRows.reduce((sum, d) => sum + d.prix, 0);
 
       const dailyPurchases = purchases
         .filter((p) => p.date === selectedDate)
@@ -1028,12 +1039,13 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       date: string,
       description: string
     ) => {
-      if (!amount) return;
+      const normalizedAmount = normalizeAriaryInput(amount);
+      if (!normalizedAmount) return;
 
       const entry: PartnerPurchaseEntry = {
         id: Date.now(),
         date,
-        amount: Number(amount),
+        amount: Number(normalizedAmount),
         description: description.trim(),
       };
 
@@ -1065,6 +1077,28 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
     );
   }, []);
 
+  const updatePayrollInfo = useCallback(
+    (
+      riderName: string,
+      field:
+        | "fullName"
+        | "cin"
+        | "role"
+        | "periodStart"
+        | "periodEnd"
+        | "paymentDate"
+        | "paymentMethod"
+        | "paymentReference"
+        | "notes",
+      value: string
+    ) => {
+      setRiderPayroll((prev) =>
+        prev.map((p) => (p.rider === riderName ? { ...p, [field]: value } : p))
+      );
+    },
+    []
+  );
+
   const addRecovery = useCallback((riderName: string) => {
     setRiderPayroll((prev) =>
       prev.map((p) =>
@@ -1086,11 +1120,14 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
   const addAdvance = useCallback((riderName: string) => {
     const formData = advanceForms[riderName] || { label: "", amount: "" };
     if (!formData.label.trim() || !formData.amount) return;
+    const normalizedAmount = normalizeAriaryInput(formData.amount);
+    if (!normalizedAmount) return;
 
     const advance: SalaryAdvance = {
       id: Date.now(),
+      date: today,
       label: formData.label.trim(),
-      amount: Number(formData.amount),
+      amount: Number(normalizedAmount),
     };
 
     setRiderPayroll((prev) =>
@@ -1375,6 +1412,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
             setOpenPartner(openPartner === "pomanai" ? null : "pomanai")
           }
           onFormChange={setPomanaiForm}
+          onDeletePurchase={(id) => deletePartnerPurchase("pomanai", id)}
           onAddPurchase={() => {
             addPartnerPurchase("pomanai", pomanaiForm.amount, pomanaiForm.date, pomanaiForm.description);
             setPomanaiForm({ date: selectedDate, amount: "", description: "" });
@@ -1395,6 +1433,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
             setOpenPartner(openPartner === "zazatiana" ? null : "zazatiana")
           }
           onFormChange={setZazatianaForm}
+          onDeletePurchase={(id) => deletePartnerPurchase("zazatiana", id)}
           onAddPurchase={() => {
             addPartnerPurchase("zazatiana", zazatianaForm.amount, zazatianaForm.date, zazatianaForm.description);
             setZazatianaForm({ date: selectedDate, amount: "", description: "" });
@@ -1416,6 +1455,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
             setBaseSalaryInputs((prev) => ({ ...prev, [rider]: value }))
           }
           onUpdateBaseSalary={updateBaseSalary}
+          onPayrollInfoChange={updatePayrollInfo}
           onAddRecovery={addRecovery}
           onRemoveRecovery={removeRecovery}
           onAdvanceFormChange={(rider, field, value) =>
