@@ -91,6 +91,7 @@ export default function ClientReceiptView({
           <tr>
             <th>Lieu</th>
             <th>Statut</th>
+            <th>Raison</th>
             <th>Prix</th>
             <th>Détail</th>
             <th>Total</th>
@@ -137,6 +138,11 @@ export default function ClientReceiptView({
               <tr key={d.id}>
                 <td>{d.lieu}</td>
                 <td>{statusLabel(d.status)}</td>
+                <td>
+                  {d.status === "non_faite" && d.raison.trim()
+                    ? d.raison.trim()
+                    : "-"}
+                </td>
                 <td>{formatAr(d.prix)}</td>
                 <td>{detail}</td>
                 <td>{typeof total === "number" ? formatAr(total) : total}</td>

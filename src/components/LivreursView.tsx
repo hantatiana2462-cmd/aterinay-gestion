@@ -48,6 +48,9 @@ type Props = {
   openRiderList: boolean;
   openGlobalDetails: boolean;
   openRiderManagement: boolean;
+  voiceListening: boolean;
+  voiceMessage: string;
+  voiceDraft: string;
   onFormChange: (form: DeliveryForm) => void;
   onAddDelivery: () => void;
   onAddRider: () => void;
@@ -59,6 +62,10 @@ type Props = {
   onToggleAddDelivery: () => void;
   onToggleRiderList: () => void;
   onToggleGlobalDetails: () => void;
+  onScanDeliveryImage: (file: File) => void;
+  onStartVoiceDelivery: () => void;
+  onVoiceDraftChange: (value: string) => void;
+  onApplyVoiceDraft: () => void;
   onToggleRiderManagement: () => void;
 };
 
@@ -74,6 +81,9 @@ export default function LivreursView({
   openRiderList,
   openGlobalDetails,
   openRiderManagement,
+  voiceListening,
+  voiceMessage,
+  voiceDraft,
   onFormChange,
   onAddDelivery,
   onAddRider,
@@ -85,6 +95,10 @@ export default function LivreursView({
   onToggleAddDelivery,
   onToggleRiderList,
   onToggleGlobalDetails,
+  onScanDeliveryImage,
+  onStartVoiceDelivery,
+  onVoiceDraftChange,
+  onApplyVoiceDraft,
   onToggleRiderManagement,
 }: Props) {
   const existingPlaces = [...new Set(deliveries.map((d) => d.lieu).filter(Boolean))];
@@ -116,6 +130,50 @@ export default function LivreursView({
                 </option>
               ))}
             </select>
+<label className="secondaryBtn">
+  Scanner livraison
+  <input
+    type="file"
+    accept="image/*"
+    capture="environment"
+    style={{ display: "none" }}
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (file) onScanDeliveryImage(file);
+      e.currentTarget.value = "";
+    }}
+  />
+</label>            
+
+<button
+  type="button"
+  className="secondaryBtn"
+  onClick={onStartVoiceDelivery}
+  disabled={voiceListening}
+>
+  {voiceListening ? "Ecoute..." : "Dicter"}
+</button>
+
+{voiceMessage && <div className="voiceMessage">{voiceMessage}</div>}
+
+<div className="voicePhraseRow">
+  <input
+    type="text"
+    placeholder="client rae lieu analakely prix 25000 frais 5000"
+    value={voiceDraft}
+    onChange={(e) => onVoiceDraftChange(e.target.value)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onApplyVoiceDraft();
+      }
+    }}
+  />
+
+  <button type="button" className="secondaryBtn" onClick={onApplyVoiceDraft}>
+    Remplir
+  </button>
+</div>
 
           <input
   id="client"
@@ -437,5 +495,3 @@ export default function LivreursView({
     </>
   );
 }
-
-

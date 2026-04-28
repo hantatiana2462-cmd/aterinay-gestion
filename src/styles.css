@@ -266,6 +266,29 @@ textarea {
   gap: 14px;
 }
 
+.voiceMessage {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d8e0ea;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 14px;
+}
+
+.voicePhraseRow {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .voicePhraseRow {
+    grid-template-columns: 1fr;
+  }
+}
+
 input,
 select,
 textarea,

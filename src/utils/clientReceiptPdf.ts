@@ -27,6 +27,7 @@ const loadImageData = (src: string) =>
 type PdfRow = {
   lieu: string;
   statut: string;
+  raison: string;
   prix: string;
   detail: string;
   total: string;
@@ -76,6 +77,10 @@ const buildReceiptRows = (deliveries: Delivery[]): PdfRow[] => {
     return {
       lieu: d.lieu,
       statut: getStatusLabel(d.status),
+      raison:
+        d.status === "non_faite" && d.raison.trim()
+          ? d.raison.trim()
+          : "-",
       prix: formatAr(d.prix),
       detail,
       total: typeof total === "number" ? formatAr(total) : total,
@@ -143,10 +148,25 @@ doc.text(`Date: ${new Date().toLocaleDateString("fr-FR")}`, 14, 47);
 
 autoTable(doc, {
   startY: 64,
-  head: [["Lieu", "Statut", "Prix colis", "Detail calcul", "Total ligne"]],
-  body: deliveryRows.map((r) => [r.lieu, r.statut, r.prix, r.detail, r.total]),
-  styles: { fontSize: 10 },
+  head: [["Lieu", "Statut", "Raison", "Prix colis", "Detail calcul", "Total ligne"]],
+  body: deliveryRows.map((r) => [
+    r.lieu,
+    r.statut,
+    r.raison,
+    r.prix,
+    r.detail,
+    r.total,
+  ]),
+  styles: { fontSize: 9, cellPadding: 2 },
   headStyles: { fillColor: [49, 92, 253] },
+  columnStyles: {
+    0: { cellWidth: 32 },
+    1: { cellWidth: 22 },
+    2: { cellWidth: 32 },
+    3: { cellWidth: 26 },
+    4: { cellWidth: 45 },
+    5: { cellWidth: 24 },
+  },
 
   didParseCell: (data) => {
     if (data.section !== "body") return;

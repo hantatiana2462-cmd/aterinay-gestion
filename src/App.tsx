@@ -4,6 +4,7 @@ import { ClientAdjustment } from "./types";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import "./styles.css";
 import ClientReceiptView from "./components/ClientReceiptView";
+import Tesseract from "tesseract.js";
 import {
   AppView,
   Delivery,
@@ -55,6 +56,41 @@ import {
 } from "./hooks/usePayroll";
 
 const today = new Date().toISOString().split("T")[0];
+
+type BrowserSpeechRecognitionEvent = {
+  results: {
+    [index: number]: {
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type BrowserSpeechRecognitionErrorEvent = {
+  error?: string;
+};
+
+type BrowserSpeechRecognition = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives: number;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: BrowserSpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  start: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
+declare global {
+  interface Window {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  }
+}
 
 // Données de test par défaut
 const DEFAULT_DELIVERIES: Delivery[] = [
@@ -121,6 +157,9 @@ export default function App() {
   const [view, setView] = useState<AppView>("livreurs");
   const [selectedDate, setSelectedDate] = useState(today);
   const [searchText, setSearchText] = useState("");
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceMessage, setVoiceMessage] = useState("");
+  const [voiceDraft, setVoiceDraft] = useState("");
 
   const askAssistant = async () => {
   if (!assistantQuestion) return;
@@ -220,6 +259,228 @@ export default function App() {
     colisPayment: "nous" as PaymentMode,
     fraisPayment: "nous" as PaymentMode,
   });
+  const handleScanDeliveryImage = useCallback(async (file: File) => {
+  const { data } = await Tesseract.recognize(file, "eng");
+
+  const text = data.text.toLowerCase();
+  console.log("OCR TEXT:", text);
+
+  const contact = text.match(/03\d{8}/)?.[0] || "";
+
+  const extractNumber = (keyword: string) => {
+    const regex = new RegExp(`${keyword}\\s*:?\\s*(\\d+)`, "i");
+    const match = text.match(regex);
+    return match ? match[1] : "";
+  };
+
+  let prix = extractNumber("prix");
+  let frais = extractNumber("frais");
+
+  if (!prix && !frais) {
+    const numbers =
+      text
+        .match(/\d+/g)
+        ?.filter((n) => !n.startsWith("03") && n.length < 8) || [];
+
+    if (numbers.length === 1) {
+      prix = numbers[0];
+      frais = "0";
+    }
+
+    if (numbers.length >= 2) {
+      prix = numbers[0];
+      frais = numbers[1];
+    }
+  }
+
+  const lieuMatch = text.match(/lieu\s*:?([^\n]+)/i);
+  const lieu = lieuMatch ? lieuMatch[1].trim() : "";
+
+  setForm((prev) => ({
+    ...prev,
+    contact: contact || prev.contact,
+    lieu: lieu || prev.lieu,
+    prix: prix || prev.prix,
+    frais: frais || prev.frais,
+  }));
+}, []);
+
+  const fillDeliveryFromVoice = useCallback((spokenText: string) => {
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\u2019']/g, " ")
+        .replace(/[-.,;:]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const text = normalize(spokenText);
+    const keywords = [
+      "client",
+      "nom",
+      "contact",
+      "telephone",
+      "numero",
+      "lieu",
+      "adresse",
+      "destination",
+      "prix",
+      "montant",
+      "tarif",
+      "colis",
+      "frais",
+      "livraison",
+      "description",
+      "article",
+    ];
+
+    const extractValue = (aliases: string[]) => {
+      const aliasPattern = aliases.join("|");
+      const keywordPattern = keywords.join("|");
+      const regex = new RegExp(
+        `(?:^|\\s)(?:${aliasPattern})\\s+(.+?)(?=\\s+(?:${keywordPattern})\\s+|$)`,
+        "i"
+      );
+      return text.match(regex)?.[1]?.trim() || "";
+    };
+
+    const numberWords: Record<string, number> = {
+      zero: 0,
+      un: 1,
+      une: 1,
+      deux: 2,
+      trois: 3,
+      quatre: 4,
+      cinq: 5,
+      six: 6,
+      sept: 7,
+      huit: 8,
+      neuf: 9,
+      dix: 10,
+      onze: 11,
+      douze: 12,
+      treize: 13,
+      quatorze: 14,
+      quinze: 15,
+      seize: 16,
+      vingt: 20,
+      trente: 30,
+      quarante: 40,
+      cinquante: 50,
+      soixante: 60,
+    };
+
+    const parseSpokenNumber = (value: string) => {
+      const digits = value.replace(/[^\d]/g, "");
+      if (digits) return digits;
+
+      let total = 0;
+      let current = 0;
+
+      value.split(/\s+/).forEach((word) => {
+        if (word in numberWords) {
+          current += numberWords[word];
+          return;
+        }
+
+        if (word === "cent") {
+          current = Math.max(current, 1) * 100;
+          return;
+        }
+
+        if (word === "mille") {
+          total += Math.max(current, 1) * 1000;
+          current = 0;
+        }
+      });
+
+      const amount = total + current;
+      return amount > 0 ? String(amount) : "";
+    };
+
+    const phoneMatch = text.match(/(?:\+?261|0)\s*3[2-8](?:\s*\d){7}/);
+    const contactDigits = phoneMatch?.[0].replace(/\D/g, "") || "";
+    const contact = contactDigits.startsWith("261")
+      ? `0${contactDigits.slice(3)}`
+      : contactDigits;
+
+    const client = extractValue(["client", "nom"]);
+    const lieu = extractValue(["lieu", "adresse", "destination"]);
+    const prix = parseSpokenNumber(extractValue(["prix", "montant", "tarif", "colis"]));
+    const frais = parseSpokenNumber(extractValue(["frais", "livraison"]));
+    const description = extractValue(["description", "article"]);
+
+    setForm((prev) => ({
+      ...prev,
+      client: client || prev.client,
+      clientType: client && isPartnerClient(client) ? "entreprise" : prev.clientType,
+      contact: contact || prev.contact,
+      lieu: lieu || prev.lieu,
+      prix: prix || prev.prix,
+      frais: frais || prev.frais,
+      description: description || prev.description,
+    }));
+  }, []);
+
+  const applyVoiceDraft = useCallback(() => {
+    if (!voiceDraft.trim()) {
+      setVoiceMessage("Phrase vide.");
+      return;
+    }
+
+    fillDeliveryFromVoice(voiceDraft);
+    setVoiceMessage(`Phrase appliquee : ${voiceDraft}`);
+  }, [fillDeliveryFromVoice, voiceDraft]);
+
+  const startVoiceDelivery = useCallback(() => {
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceMessage("Dictee navigateur indisponible. Utilise le champ Phrase.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = "fr-FR";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setVoiceListening(true);
+      setVoiceMessage("Ecoute en cours...");
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0]?.[0]?.transcript || "";
+      fillDeliveryFromVoice(transcript);
+      setVoiceMessage(`Entendu : ${transcript}`);
+    };
+
+    recognition.onerror = (event) => {
+      setVoiceListening(false);
+      setVoiceMessage(
+        event.error === "not-allowed"
+          ? "Micro refuse par le navigateur."
+          : "Dictee impossible. Reessaie en parlant plus clairement."
+      );
+    };
+
+    recognition.onend = () => {
+      setVoiceListening(false);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      console.error(err);
+      setVoiceListening(false);
+      setVoiceMessage("La dictee n'a pas pu demarrer.");
+    }
+  }, [fillDeliveryFromVoice]);
 
   const [newRiderName, setNewRiderName] = useState("");
   const [confirmRiderId, setConfirmRiderId] = useState<number | null>(null);
@@ -988,12 +1249,19 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
           openRiderList={openRiderList}
           openGlobalDetails={openGlobalDetails}
           openRiderManagement={openRiderManagement}
+          voiceListening={voiceListening}
+          voiceMessage={voiceMessage}
+          voiceDraft={voiceDraft}
           onFormChange={setForm}
           onAddDelivery={addDelivery}
           onAddRider={addRider}
           onUpdateRiderName={updateRiderName}
           onToggleRiderActive={setConfirmRiderId}
           onMarkAllReceived={markAllRiderPaymentsReceived}
+          onScanDeliveryImage={handleScanDeliveryImage}
+          onStartVoiceDelivery={startVoiceDelivery}
+          onVoiceDraftChange={setVoiceDraft}
+          onApplyVoiceDraft={applyVoiceDraft}
           onNewRiderNameChange={setNewRiderName}
           onSelectRider={(rider) => {
             setSelectedRiderDetails(rider);

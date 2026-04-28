@@ -2,7 +2,7 @@ import { formatAr } from "../helpers";
 import DeliveryTable from "./DeliveryTable";
 import ClientReceiptView from "./ClientReceiptView";
 import { Delivery, ClientAdjustment } from "../types";
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 
 type ClientStat = {
   client: string;
@@ -90,7 +90,7 @@ export function ClientsView({
 type ClientDetailProps = {
   selectedClientGroup: ClientGroup | null;
   clientAdjustments: ClientAdjustment[];
-  setClientAdjustments: React.Dispatch<React.SetStateAction<ClientAdjustment[]>>;
+  setClientAdjustments: Dispatch<SetStateAction<ClientAdjustment[]>>;
   openDeliveryId: number | null;
   onBack: () => void;
   onToggleOpen: (id: number) => void;
