@@ -1,5 +1,5 @@
 import { Rider, Delivery, DeliveryStatus, PaymentMode, ClientType } from "../types";
-import { formatAr, isPartnerClient } from "../helpers";
+import { formatAr, isPartnerClient, normalizeAriaryInput } from "../helpers";
 
 type RiderStat = {
   rider: string;
@@ -42,6 +42,7 @@ type Props = {
   riderStats: RiderStat[];
   globalStats: GlobalStats;
   deliveries: Delivery[];
+  placeSuggestions: string[];
   form: DeliveryForm;
   newRiderName: string;
   openAddDelivery: boolean;
@@ -52,7 +53,7 @@ type Props = {
   voiceMessage: string;
   voiceDraft: string;
   onFormChange: (form: DeliveryForm) => void;
-  onAddDelivery: () => void;
+  onAddDelivery: () => Promise<boolean>;
   onAddRider: () => void;
   onUpdateRiderName: (id: number, name: string) => void;
   onToggleRiderActive: (id: number) => void;
@@ -75,6 +76,7 @@ export default function LivreursView({
   riderStats,
   globalStats,
   deliveries,
+  placeSuggestions,
   form,
   newRiderName,
   openAddDelivery,
@@ -101,7 +103,20 @@ export default function LivreursView({
   onApplyVoiceDraft,
   onToggleRiderManagement,
 }: Props) {
-  const existingPlaces = [...new Set(deliveries.map((d) => d.lieu).filter(Boolean))];
+  const existingPlaces = placeSuggestions;
+  const normalizeAmountField = (field: "prix" | "frais") => {
+    const normalized = normalizeAriaryInput(form[field]);
+    if (!normalized) return;
+    onFormChange({ ...form, [field]: normalized });
+  };
+
+  const handleAddDelivery = async () => {
+    const added = await onAddDelivery();
+    if (added) {
+      window.setTimeout(() => document.getElementById("lieu")?.focus(), 0);
+    }
+  };
+
   return (
     <>
       <section className="panel collapsiblePanel">
@@ -246,20 +261,23 @@ export default function LivreursView({
   onKeyDown={(e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      onAddDelivery();
+      document.getElementById("add-delivery-button")?.focus();
     }
   }}
 />
 
             <input
   id="prix"
-  type="number"
+  type="text"
+  inputMode="decimal"
   placeholder="Prix colis"
   value={form.prix}
   onChange={(e) => onFormChange({ ...form, prix: e.target.value })}
+  onBlur={() => normalizeAmountField("prix")}
   onKeyDown={(e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      normalizeAmountField("prix");
       document.getElementById("frais")?.focus();
     }
   }}
@@ -267,13 +285,16 @@ export default function LivreursView({
 
             <input
   id="frais"
-  type="number"
+  type="text"
+  inputMode="decimal"
   placeholder="Frais livraison"
   value={form.frais}
   onChange={(e) => onFormChange({ ...form, frais: e.target.value })}
+  onBlur={() => normalizeAmountField("frais")}
   onKeyDown={(e) => {
     if (e.key === "Enter") {
       e.preventDefault();
+      normalizeAmountField("frais");
       document.getElementById("description")?.focus();
     }
   }}
@@ -340,7 +361,12 @@ export default function LivreursView({
               />
             )}
 
-            <button className="primaryBtn" onClick={onAddDelivery}>
+            <button
+              id="add-delivery-button"
+              type="button"
+              className="primaryBtn"
+              onClick={handleAddDelivery}
+            >
               Ajouter
             </button>
           </div>

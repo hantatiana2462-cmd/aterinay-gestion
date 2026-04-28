@@ -34,6 +34,7 @@ import {
   getOutstandingVersement,
   getRetourCount,
   isSameMonth,
+  normalizeAriaryInput,
 } from "./helpers";
 import { usePersist, useLoadPersist } from "./hooks/usePersist";
 import DeliveryTable from "./components/DeliveryTable";
@@ -580,6 +581,19 @@ export default function App() {
   const deliveriesForDate = useDeliveriesByDate(deliveries, selectedDate);
   const deliveriesForMonth = useDeliveriesByMonth(deliveries, selectedDate);
   const searchedDeliveries = useSearchDeliveries(deliveriesForDate, searchText);
+  const placeSuggestions = useMemo(() => {
+    const seen = new Set<string>();
+
+    return [...deliveries]
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id)
+      .map((d) => d.lieu.trim())
+      .filter((lieu) => {
+        const key = lieu.toLowerCase();
+        if (!lieu || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }, [deliveries]);
 
   // Hooks de statistiques
   const riderStats = useRiderStats(riders, searchedDeliveries);
@@ -743,11 +757,14 @@ export default function App() {
   }, [pinInput]);
 
   const addDelivery = useCallback(async() => {
-    if (!form.client.trim() || !form.lieu.trim() || !form.prix || !form.frais) {
-      return;
+    const normalizedPrix = normalizeAriaryInput(form.prix);
+    const normalizedFrais = normalizeAriaryInput(form.frais);
+
+    if (!form.client.trim() || !form.lieu.trim() || !normalizedPrix || !normalizedFrais) {
+      return false;
     }
     if (form.contact.trim() && !form.contact.trim().startsWith("03")) {
-  return;
+  return false;
 }
 
     const cleanedClient = form.client.trim().toLowerCase();
@@ -764,8 +781,8 @@ export default function App() {
       clientType: inferredClientType,
       lieu: form.lieu.trim(),
       description: form.description.trim(),
-      prix: Number(form.prix),
-      frais: Number(form.frais),
+      prix: Number(normalizedPrix),
+      frais: Number(normalizedFrais),
       status: form.status,
       raison: form.status === "non_faite" ? form.raison.trim() : "",
       retours:
@@ -789,7 +806,7 @@ const { data, error } = await supabase
 if (error) {
   console.log("SUPABASE INSERT ERROR:", error);
   alert("Erreur Supabase : la livraison n'a pas ete enregistree.");
-  return;
+  return false;
 }
 
 setDeliveries((prev) => [data as Delivery, ...prev]);
@@ -798,7 +815,6 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
 
     setForm((prev) => ({
       ...prev,
-      contact: "",
       lieu: "",
       description: "",
       prix: "",
@@ -809,6 +825,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       colisPayment: "nous",
       fraisPayment: "nous",
     }));
+    return true;
   }, [form]);
 
   const updateDeliveryField = useCallback(
@@ -1243,6 +1260,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
           riderStats={riderStats}
           globalStats={globalStats}
           deliveries={searchedDeliveries}
+          placeSuggestions={placeSuggestions}
           form={form}
           newRiderName={newRiderName}
           openAddDelivery={openAddDelivery}

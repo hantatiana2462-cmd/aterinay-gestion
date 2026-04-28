@@ -4,6 +4,22 @@ import { PARTNER_CLIENTS } from "./constants";
 export const formatAr = (n: number) =>
   `${new Intl.NumberFormat("fr-FR").format(Number.isFinite(n) ? n : 0)} Ar`;
 
+export const normalizeAriaryInput = (value: string) => {
+  const cleaned = String(value).trim().replace(/\s+/g, "").replace(",", ".");
+  if (!cleaned) return "";
+
+  const parsed = Number(cleaned);
+  if (!Number.isFinite(parsed)) return "";
+
+  const amount = cleaned.includes(".")
+    ? Math.round(parsed * 1000)
+    : cleaned.length <= 3
+      ? parsed * 1000
+      : parsed;
+
+  return String(Math.round(amount));
+};
+
 export const statusLabel = (status: DeliveryStatus) => {
   if (status === "faite") return "Faite";
   if (status === "en_cours") return "En cours";
