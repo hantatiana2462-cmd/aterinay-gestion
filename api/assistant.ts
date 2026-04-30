@@ -5,18 +5,28 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { question, context } = req.body;
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    if (!apiKey) {
+      return res.status(500).json({
+        answer: "Cle OPENROUTER_API_KEY manquante pour l'assistant IA.",
+      });
+    }
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": process.env.OPENROUTER_SITE_URL || "http://localhost:5173",
+        "X-Title": "Aterinay Gestion",
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
-        input: [
+        model: process.env.OPENROUTER_MODEL || "openrouter/auto",
+        temperature: 0.2,
+        messages: [
           {
-            role: "developer",
+            role: "system",
             content: `
 Tu es l'assistant IA métier de l'application Aterinay.
 
@@ -119,12 +129,21 @@ ${JSON.stringify(context, null, 2)}
     });
 
     const data = await response.json();
+    const answer = data?.choices?.[0]?.message?.content;
+
+    if (!response.ok) {
+      return res.status(response.status).json({
+        answer:
+          data?.error?.message ||
+          "OpenRouter n'a pas pu traiter la demande pour le moment.",
+      });
+    }
 
     return res.status(200).json({
-      answer: data.output_text || "Je n'ai pas pu générer de réponse.",
+      answer: answer || "Je n'ai pas pu generer de reponse.",
     });
   } catch (error) {
     console.error("ASSISTANT ERROR:", error);
-    return res.status(500).json({ error: "Erreur assistant IA" });
+    return res.status(500).json({ answer: "Erreur assistant IA" });
   }
 }

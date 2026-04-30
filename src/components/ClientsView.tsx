@@ -1,7 +1,7 @@
-import { formatAr } from "../helpers";
+import { formatAr, normalizeAriaryInput } from "../helpers";
 import DeliveryTable from "./DeliveryTable";
 import ClientReceiptView from "./ClientReceiptView";
-import { Delivery, ClientAdjustment } from "../types";
+import { Delivery, ClientAdjustment, Rider } from "../types";
 import { useState, type Dispatch, type SetStateAction } from "react";
 
 type ClientStat = {
@@ -89,6 +89,7 @@ export function ClientsView({
 
 type ClientDetailProps = {
   selectedClientGroup: ClientGroup | null;
+  riders: Rider[];
   clientAdjustments: ClientAdjustment[];
   setClientAdjustments: Dispatch<SetStateAction<ClientAdjustment[]>>;
   openDeliveryId: number | null;
@@ -101,6 +102,7 @@ type ClientDetailProps = {
 
 export function ClientDetails({
   selectedClientGroup,
+  riders,
   clientAdjustments,
   setClientAdjustments,
   openDeliveryId,
@@ -150,7 +152,7 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
     />
 
     <input
-      type="number"
+      inputMode="decimal"
       placeholder="Montant (+ ou -)"
       value={adjustmentAmount}
       onChange={(e) => setAdjustmentAmount(e.target.value)}
@@ -162,9 +164,10 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
       onClick={() => {
         if (!selectedClientGroup) return;
         if (!adjustmentLabel.trim()) return;
-        if (!adjustmentAmount) return;
+        const normalizedAmount = normalizeAriaryInput(adjustmentAmount);
+        if (!normalizedAmount) return;
 
-        const amount = Number(adjustmentAmount);
+        const amount = Number(normalizedAmount);
 
         setClientAdjustments((prev) => [
           ...prev,
@@ -192,11 +195,12 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
     <h3>Ajustements</h3>
 
     {clientAdjustments.map((adjustment) => (
-      <div key={adjustment.id}>
+      <div className="clientAdjustmentItem" key={adjustment.id}>
         <span>{adjustment.label}</span>
-        <span>{formatAr(adjustment.amount)}</span>
+        <strong>{formatAr(adjustment.amount)}</strong>
 
         <button
+          className="deleteBtn"
           onClick={() =>
             setClientAdjustments((prev) =>
               prev.filter((a) => a.id !== adjustment.id)
@@ -214,6 +218,20 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
   deliveries={selectedClientGroup.rows}
   adjustments={clientAdjustments}
 />
+
+          <section className="clientEditableDeliveries">
+            <h3>Modifier les livraisons du client</h3>
+            <DeliveryTable
+              rows={selectedClientGroup.rows}
+              riders={riders}
+              openDeliveryId={openDeliveryId}
+              showClient={true}
+              onToggleOpen={onToggleOpen}
+              onUpdateField={onUpdateField}
+              onTogglePayment={onTogglePayment}
+              onDelete={onDelete}
+            />
+          </section>
         </>
       ) : (
         <div className="emptySmall">Aucun client selectionne.</div>

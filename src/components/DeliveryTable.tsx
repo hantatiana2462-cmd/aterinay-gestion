@@ -1,9 +1,10 @@
 import { Fragment, useState } from "react";
-import { Delivery } from "../types";
+import { Delivery, PaymentMode, Rider } from "../types";
 import { formatAr, statusClass, statusLabel } from "../helpers";
 
 type Props = {
   rows: Delivery[];
+  riders: Rider[];
   openDeliveryId: number | null;
   showClient?: boolean;
   onToggleOpen: (id: number) => void;
@@ -16,6 +17,8 @@ type Props = {
   onDelete: (id: number) => void;
 };
 
+type PaymentField = "colisPayment" | "fraisPayment";
+
 const statusEmoji = (status: Delivery["status"]) => {
   if (status === "faite") return "✅";
   if (status === "non_faite") return "❌";
@@ -24,6 +27,7 @@ const statusEmoji = (status: Delivery["status"]) => {
 
 export default function DeliveryTable({
   rows,
+  riders,
   openDeliveryId,
   showClient = false,
   onToggleOpen,
@@ -37,6 +41,168 @@ export default function DeliveryTable({
     return <div className="emptySmall">Aucune livraison.</div>;
   }
 
+  const renderStatusButtons = (row: Delivery) => (
+    <div className="statusButtons">
+      <button
+        type="button"
+        title="Faite"
+        className={`statusPillBtn ${row.status === "faite" ? "statusDone" : ""}`}
+        onClick={() => onUpdateField(row.id, "status", "faite")}
+      >
+        ✅
+      </button>
+      <button
+        type="button"
+        title="Non faite"
+        className={`statusPillBtn ${
+          row.status === "non_faite" ? "statusCancelled" : ""
+        }`}
+        onClick={() => onUpdateField(row.id, "status", "non_faite")}
+      >
+        ❌
+      </button>
+      <button
+        type="button"
+        title="En cours"
+        className={`statusPillBtn ${
+          row.status === "en_cours" ? "statusPending" : ""
+        }`}
+        onClick={() => onUpdateField(row.id, "status", "en_cours")}
+      >
+        ⏳
+      </button>
+    </div>
+  );
+
+  const renderPaymentButtons = (row: Delivery, field: PaymentField) => {
+    const value = row[field] as PaymentMode;
+
+    return (
+      <div className="payButtons">
+        <button
+          type="button"
+          className={`payBtn ${value === "nous" ? "activeNous" : ""}`}
+          onClick={() => onUpdateField(row.id, field, "nous")}
+        >
+          Nous
+        </button>
+        <button
+          type="button"
+          className={`payBtn ${
+            value === "direct_client" ? "activeClient" : ""
+          }`}
+          onClick={() => onUpdateField(row.id, field, "direct_client")}
+        >
+          Client
+        </button>
+        <button
+          type="button"
+          className={`payBtn ${
+            value === "mobile_money_nous" ? "activeMobile" : ""
+          }`}
+          onClick={() => onUpdateField(row.id, field, "mobile_money_nous")}
+        >
+          Mvola
+        </button>
+      </div>
+    );
+  };
+
+  const renderEditPanel = (row: Delivery) => (
+    <>
+      <div className="deliveryEditGrid">
+        <div className="fieldBlock">
+          <label>Client</label>
+          <input
+            value={row.client}
+            onChange={(e) => onUpdateField(row.id, "client", e.target.value)}
+          />
+        </div>
+
+        <div className="fieldBlock">
+          <label>Livreur</label>
+          <select
+            value={row.rider}
+            onChange={(e) => onUpdateField(row.id, "rider", e.target.value)}
+          >
+            {riders.map((rider) => (
+              <option key={rider.id} value={rider.name}>
+                {rider.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="fieldBlock">
+          <label>Lieu</label>
+          <input
+            value={row.lieu}
+            onChange={(e) => onUpdateField(row.id, "lieu", e.target.value)}
+          />
+        </div>
+
+        <div className="fieldBlock">
+          <label>Description</label>
+          <input
+            value={row.description}
+            onChange={(e) =>
+              onUpdateField(row.id, "description", e.target.value)
+            }
+          />
+        </div>
+
+        {row.status === "non_faite" && (
+          <div className="fieldBlock">
+            <label>Raison</label>
+            <input
+              value={row.raison}
+              onChange={(e) => onUpdateField(row.id, "raison", e.target.value)}
+            />
+          </div>
+        )}
+
+        <div className="fieldBlock">
+          <label>Prix colis</label>
+          <input
+            type="number"
+            value={row.prix}
+            onChange={(e) =>
+              onUpdateField(row.id, "prix", Number(e.target.value))
+            }
+          />
+        </div>
+
+        <div className="fieldBlock">
+          <label>Frais livraison</label>
+          <input
+            type="number"
+            value={row.frais}
+            onChange={(e) =>
+              onUpdateField(row.id, "frais", Number(e.target.value))
+            }
+          />
+        </div>
+
+        <div className="fieldBlock">
+          <label>Retours</label>
+          <input
+            type="number"
+            value={row.retours}
+            onChange={(e) =>
+              onUpdateField(row.id, "retours", Number(e.target.value))
+            }
+          />
+        </div>
+      </div>
+
+      <div className="deliveryEditActions">
+        <button className="dangerBtn" onClick={() => onDelete(row.id)}>
+          Supprimer
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div className="deliveryTableSection">
       <div className="deliveryTableToolbar">
@@ -45,19 +211,88 @@ export default function DeliveryTable({
           className="secondaryBtn tableSizeToggle"
           onClick={() => setCompactMode((prev) => !prev)}
         >
-          {compactMode ? "Agrandir le tableau" : "Réduire le tableau"}
+          {compactMode ? "Agrandir le tableau" : "Reduire le tableau"}
         </button>
       </div>
 
+      <div className="deliveryMobileCards">
+        {rows.map((row) => {
+          const isOpen = openDeliveryId === row.id;
+
+          return (
+            <article
+              className={`deliveryMobileCard deliveryStatus-${row.status}`}
+              key={row.id}
+            >
+              <div className="deliveryMobileTop">
+                <div>
+                  <strong>{row.lieu}</strong>
+                  {showClient && <span>Client: {row.client}</span>}
+                </div>
+                <span
+                  title={statusLabel(row.status)}
+                  className={`statusBadge ${statusClass(row.status)}`}
+                >
+                  {statusEmoji(row.status)}
+                </span>
+              </div>
+
+              {(row.description || row.raison) && (
+                <div className="deliveryMobileNote">
+                  {row.status === "non_faite" && row.raison
+                    ? `Raison: ${row.raison}`
+                    : row.description}
+                </div>
+              )}
+
+              <div className="deliveryMobileMoney">
+                <div>
+                  <span>Colis</span>
+                  <strong>{formatAr(row.prix)}</strong>
+                  {renderPaymentButtons(row, "colisPayment")}
+                </div>
+                <div>
+                  <span>Frais</span>
+                  <strong>{formatAr(row.frais)}</strong>
+                  {renderPaymentButtons(row, "fraisPayment")}
+                </div>
+              </div>
+
+              <div className="deliveryMobileActions">
+                {renderStatusButtons(row)}
+                <button
+                  className={`miniPayBadge ${
+                    row.paymentStatus === "recu" ? "payReceived" : "payPending"
+                  }`}
+                  onClick={() => onTogglePayment(row.id)}
+                >
+                  {row.paymentStatus === "recu" ? "Recu" : "Restant"}
+                </button>
+                <button
+                  className="secondaryBtn"
+                  onClick={() => onToggleOpen(row.id)}
+                >
+                  {isOpen ? "Fermer" : "Modifier"}
+                </button>
+              </div>
+
+              {isOpen && (
+                <div className="deliveryMobileEdit">{renderEditPanel(row)}</div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+
       <div
-        className={`deliveryTableWrap ${
+        className={`deliveryTableWrap desktopDeliveryTableWrap ${
           compactMode ? "tableCompact" : "tableWide"
         }`}
       >
         <table className="deliveryTable">
           <thead>
             <tr>
-              <th>Lieu / Détail</th>
+              <th>Lieu / Detail</th>
               <th>Statut</th>
               <th>Colis</th>
               <th>Frais</th>
@@ -72,7 +307,7 @@ export default function DeliveryTable({
 
               return (
                 <Fragment key={row.id}>
-                  <tr className="deliveryMainRow">
+                  <tr className={`deliveryMainRow deliveryStatus-${row.status}`}>
                     <td>
                       <div className="deliveryMainInfo">
                         <div className="deliveryPlace">{row.lieu}</div>
@@ -98,45 +333,7 @@ export default function DeliveryTable({
                     </td>
 
                     <td>
-                      <div className="statusButtons">
-                        <button
-                          type="button"
-                          title="Faite"
-                          className={`statusPillBtn ${
-                            row.status === "faite" ? "statusDone" : ""
-                          }`}
-                          onClick={() => onUpdateField(row.id, "status", "faite")}
-                        >
-                          ✅
-                        </button>
-
-                        <button
-                          type="button"
-                          title="Non faite"
-                          className={`statusPillBtn ${
-                            row.status === "non_faite" ? "statusCancelled" : ""
-                          }`}
-                          onClick={() =>
-                            onUpdateField(row.id, "status", "non_faite")
-                          }
-                        >
-                          ❌
-                        </button>
-
-                        <button
-                          type="button"
-                          title="En cours"
-                          className={`statusPillBtn ${
-                            row.status === "en_cours" ? "statusPending" : ""
-                          }`}
-                          onClick={() =>
-                            onUpdateField(row.id, "status", "en_cours")
-                          }
-                        >
-                          ⏳
-                        </button>
-                      </div>
-
+                      {renderStatusButtons(row)}
                       <div className="currentStatusLine">
                         <span
                           title={statusLabel(row.status)}
@@ -150,112 +347,14 @@ export default function DeliveryTable({
                     <td>
                       <div className="priceCell">
                         <div className="priceValue">{formatAr(row.prix)}</div>
-
-                        <div className="payButtons">
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.colisPayment === "nous" ? "activeNous" : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(row.id, "colisPayment", "nous")
-                            }
-                          >
-                            Nous
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.colisPayment === "direct_client"
-                                ? "activeClient"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(
-                                row.id,
-                                "colisPayment",
-                                "direct_client"
-                              )
-                            }
-                          >
-                            Client
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.colisPayment === "mobile_money_nous"
-                                ? "activeMobile"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(
-                                row.id,
-                                "colisPayment",
-                                "mobile_money_nous"
-                              )
-                            }
-                          >
-                            Mvola
-                          </button>
-                        </div>
+                        {renderPaymentButtons(row, "colisPayment")}
                       </div>
                     </td>
 
                     <td>
                       <div className="priceCell">
                         <div className="priceValue">{formatAr(row.frais)}</div>
-
-                        <div className="payButtons">
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.fraisPayment === "nous" ? "activeNous" : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(row.id, "fraisPayment", "nous")
-                            }
-                          >
-                            Nous
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.fraisPayment === "direct_client"
-                                ? "activeClient"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(
-                                row.id,
-                                "fraisPayment",
-                                "direct_client"
-                              )
-                            }
-                          >
-                            Client
-                          </button>
-
-                          <button
-                            type="button"
-                            className={`payBtn ${
-                              row.fraisPayment === "mobile_money_nous"
-                                ? "activeMobile"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              onUpdateField(
-                                row.id,
-                                "fraisPayment",
-                                "mobile_money_nous"
-                              )
-                            }
-                          >
-                            Mvola
-                          </button>
-                        </div>
+                        {renderPaymentButtons(row, "fraisPayment")}
                       </div>
                     </td>
 
@@ -268,7 +367,7 @@ export default function DeliveryTable({
                         }`}
                         onClick={() => onTogglePayment(row.id)}
                       >
-                        {row.paymentStatus === "recu" ? "Reçu" : "Restant"}
+                        {row.paymentStatus === "recu" ? "Recu" : "Restant"}
                       </button>
                     </td>
 
@@ -284,91 +383,7 @@ export default function DeliveryTable({
 
                   {isOpen && (
                     <tr className="deliveryEditRow">
-                      <td colSpan={6}>
-                        <div className="deliveryEditGrid">
-                          <div className="fieldBlock">
-                            <label>Lieu</label>
-                            <input
-                              value={row.lieu}
-                              onChange={(e) =>
-                                onUpdateField(row.id, "lieu", e.target.value)
-                              }
-                            />
-                          </div>
-
-                          <div className="fieldBlock">
-                            <label>Description</label>
-                            <input
-                              value={row.description}
-                              onChange={(e) =>
-                                onUpdateField(
-                                  row.id,
-                                  "description",
-                                  e.target.value
-                                )
-                              }
-                            />
-                          </div>
-
-                          {row.status === "non_faite" && (
-                            <div className="fieldBlock">
-                              <label>Raison</label>
-                              <input
-                                value={row.raison}
-                                onChange={(e) =>
-                                  onUpdateField(row.id, "raison", e.target.value)
-                                }
-                              />
-                            </div>
-                          )}
-
-                          <div className="fieldBlock">
-                            <label>Prix colis</label>
-                            <input
-                              type="number"
-                              value={row.prix}
-                              onChange={(e) =>
-                                onUpdateField(row.id, "prix", Number(e.target.value))
-                              }
-                            />
-                          </div>
-
-                          <div className="fieldBlock">
-                            <label>Frais livraison</label>
-                            <input
-                              type="number"
-                              value={row.frais}
-                              onChange={(e) =>
-                                onUpdateField(row.id, "frais", Number(e.target.value))
-                              }
-                            />
-                          </div>
-
-                          <div className="fieldBlock">
-                            <label>Retours</label>
-                            <input
-                              type="number"
-                              value={row.retours}
-                              onChange={(e) =>
-                                onUpdateField(
-                                  row.id,
-                                  "retours",
-                                  Number(e.target.value)
-                                )
-                              }
-                            />
-                          </div>
-                        </div>
-
-                        <div className="deliveryEditActions">
-                          <button
-                            className="dangerBtn"
-                            onClick={() => onDelete(row.id)}
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
+                      <td colSpan={6}>{renderEditPanel(row)}</td>
                     </tr>
                   )}
                 </Fragment>

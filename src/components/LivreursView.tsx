@@ -128,7 +128,7 @@ export default function LivreursView({
         </div>
 
         {openAddDelivery && (
-          <div className="formGrid">
+          <div className="formGrid quickDeliveryGrid">
             <input
               type="date"
               value={form.date}
@@ -136,6 +136,7 @@ export default function LivreursView({
             />
 
             <select
+              className="riderSelect"
               value={form.rider}
               onChange={(e) => onFormChange({ ...form, rider: e.target.value })}
             >
@@ -145,7 +146,7 @@ export default function LivreursView({
                 </option>
               ))}
             </select>
-<label className="secondaryBtn">
+<label className="secondaryBtn scanBtn">
   Scanner livraison
   <input
     type="file"
@@ -162,7 +163,7 @@ export default function LivreursView({
 
 <button
   type="button"
-  className="secondaryBtn"
+  className="secondaryBtn voiceBtn"
   onClick={onStartVoiceDelivery}
   disabled={voiceListening}
 >
@@ -212,6 +213,7 @@ export default function LivreursView({
 
 <input
   id="contact"
+  inputMode="tel"
   placeholder="Contact client (03XXXXXXXX)"
   value={form.contact}
   onChange={(e) => onFormChange({ ...form, contact: e.target.value })}
@@ -224,6 +226,7 @@ export default function LivreursView({
 />
 
             <select
+              className="clientTypeSelect"
               value={form.clientType}
               onChange={(e) =>
                 onFormChange({ ...form, clientType: e.target.value as ClientType })
@@ -252,20 +255,6 @@ export default function LivreursView({
     <option key={lieu} value={lieu} />
   ))}
 </datalist>
-            
-            <input
-  id="description"
-  placeholder="Description"
-  value={form.description}
-  onChange={(e) => onFormChange({ ...form, description: e.target.value })}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      document.getElementById("add-delivery-button")?.focus();
-    }
-  }}
-/>
-
             <input
   id="prix"
   type="text"
@@ -300,7 +289,21 @@ export default function LivreursView({
   }}
 />
 
+            <input
+  id="description"
+  placeholder="Description"
+  value={form.description}
+  onChange={(e) => onFormChange({ ...form, description: e.target.value })}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      document.getElementById("add-delivery-button")?.focus();
+    }
+  }}
+/>
+
             <select
+              className="paymentSelect"
               value={form.colisPayment}
               onChange={(e) =>
                 onFormChange({ ...form, colisPayment: e.target.value as PaymentMode })
@@ -312,6 +315,7 @@ export default function LivreursView({
             </select>
 
             <select
+              className="paymentSelect"
               value={form.fraisPayment}
               onChange={(e) =>
                 onFormChange({ ...form, fraisPayment: e.target.value as PaymentMode })
@@ -323,6 +327,7 @@ export default function LivreursView({
             </select>
 
             <select
+              className="statusSelect"
               value={form.status}
               onChange={(e) =>
                 onFormChange({
@@ -364,7 +369,7 @@ export default function LivreursView({
             <button
               id="add-delivery-button"
               type="button"
-              className="primaryBtn"
+              className="primaryBtn addDeliveryBtn"
               onClick={handleAddDelivery}
             >
               Ajouter

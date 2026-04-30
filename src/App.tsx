@@ -93,6 +93,24 @@ declare global {
   }
 }
 
+type MainAppView = Exclude<AppView, "livreur_details" | "client_details">;
+
+const MAIN_VIEW_OPTIONS: { value: MainAppView; label: string; mobileLabel: string }[] = [
+  { value: "livreurs", label: "Livreurs", mobileLabel: "Livreurs" },
+  { value: "clients", label: "Clients", mobileLabel: "Clients" },
+  { value: "finance", label: "Finance", mobileLabel: "Finance" },
+  { value: "pomanai", label: "POMANAI", mobileLabel: "Pomanai" },
+  { value: "zazatiana", label: "ZAZATIANA", mobileLabel: "Zazatiana" },
+  { value: "salaires", label: "Salaires", mobileLabel: "Salaires" },
+  { value: "aterinay", label: "ATERINAY", mobileLabel: "Aterinay" },
+];
+
+const getMainView = (currentView: AppView): MainAppView => {
+  if (currentView === "livreur_details") return "livreurs";
+  if (currentView === "client_details") return "clients";
+  return currentView;
+};
+
 // Données de test par défaut
 const DEFAULT_DELIVERIES: Delivery[] = [
   {
@@ -312,39 +330,163 @@ export default function App() {
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\b(virgule|point)\b/g, " virgule ")
+        .replace(/[,.]/g, " virgule ")
         .replace(/[\u2019']/g, " ")
-        .replace(/[-.,;:]/g, " ")
+        .replace(/[-;:!?]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
 
-    const text = normalize(spokenText);
-    const keywords = [
-      "client",
-      "nom",
-      "contact",
-      "telephone",
-      "numero",
-      "lieu",
-      "adresse",
-      "destination",
-      "prix",
-      "montant",
-      "tarif",
-      "colis",
-      "frais",
-      "livraison",
-      "description",
-      "article",
-    ];
+    const compact = (value: string) => normalize(value).replace(/\s+/g, "");
 
-    const extractValue = (aliases: string[]) => {
-      const aliasPattern = aliases.join("|");
-      const keywordPattern = keywords.join("|");
+    const distance = (a: string, b: string) => {
+      const dp = Array.from({ length: a.length + 1 }, (_, i) =>
+        Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+      );
+
+      for (let i = 1; i <= a.length; i += 1) {
+        for (let j = 1; j <= b.length; j += 1) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(
+            dp[i - 1][j] + 1,
+            dp[i][j - 1] + 1,
+            dp[i - 1][j - 1] + cost
+          );
+        }
+      }
+
+      return dp[a.length][b.length];
+    };
+
+    const keywordAliases: Record<string, string[]> = {
+      client: ["client", "clients", "clien", "clian", "clyan", "klian", "kliyan", "nom"],
+      contact: ["contact", "telephone", "tel", "numero", "num"],
+      lieu: ["lieu", "lieux", "lie", "leu", "liou", "adresse", "destination", "quartier"],
+      prix: ["prix", "pri", "prie", "montant", "tarif", "colis"],
+      frais: ["frais", "frai", "fray", "fre", "fret"],
+      description: ["description", "descriptions", "desc", "article", "produit", "commande"],
+    };
+
+    const aliasToKeyword = Object.entries(keywordAliases).reduce<Record<string, string>>(
+      (acc, [keyword, aliases]) => {
+        aliases.forEach((alias) => {
+          acc[alias] = keyword;
+        });
+        return acc;
+      },
+      {}
+    );
+
+    const correctKeyword = (word: string) => {
+      if (aliasToKeyword[word]) return aliasToKeyword[word];
+      if (word.length < 3) return word;
+
+      let best = { keyword: word, score: Number.POSITIVE_INFINITY };
+
+      Object.entries(aliasToKeyword).forEach(([alias, keyword]) => {
+        const score = distance(word, alias);
+        const allowed = alias.length <= 4 ? 1 : 2;
+        if (score <= allowed && score < best.score) {
+          best = { keyword, score };
+        }
+      });
+
+      return best.keyword;
+    };
+
+    const text = normalize(spokenText)
+      .split(/\s+/)
+      .map(correctKeyword)
+      .join(" ");
+
+    const keywords = Object.keys(keywordAliases);
+    const keywordPattern = keywords.join("|");
+
+    const ignoredWords = new Set([
+      "ajoute",
+      "ajouter",
+      "mets",
+      "mettre",
+      "livraison",
+      "saisie",
+      "pour",
+      "avec",
+      "le",
+      "la",
+      "les",
+      "un",
+      "une",
+      "de",
+      "du",
+      "des",
+      "a",
+      "au",
+    ]);
+
+    const cleanValue = (value: string) =>
+      value
+        .split(/\s+/)
+        .filter((word) => word && !ignoredWords.has(word) && !keywords.includes(word))
+        .join(" ")
+        .trim();
+
+    const extractValue = (keyword: string) => {
       const regex = new RegExp(
-        `(?:^|\\s)(?:${aliasPattern})\\s+(.+?)(?=\\s+(?:${keywordPattern})\\s+|$)`,
+        `(?:^|\\s)${keyword}\\s+(.+?)(?=\\s+(?:${keywordPattern})\\s+|$)`,
         "i"
       );
-      return text.match(regex)?.[1]?.trim() || "";
+      return cleanValue(text.match(regex)?.[1]?.trim() || "");
+    };
+
+    const unique = (values: string[]) => {
+      const seen = new Set<string>();
+      return values
+        .map((value) => value.trim())
+        .filter((value) => {
+          const key = compact(value);
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+
+    const knownPlaces = unique(deliveries.map((delivery) => delivery.lieu));
+    const knownClients = unique(deliveries.map((delivery) => delivery.client));
+
+    const findKnownInText = (sourceText: string, knownValues: string[]) => {
+      const sourceCompact = compact(sourceText);
+      return knownValues.find((value) => {
+        const valueCompact = compact(value);
+        return (
+          valueCompact.length >= 3 &&
+          (sourceCompact.includes(valueCompact) || valueCompact.includes(sourceCompact))
+        );
+      });
+    };
+
+    const matchKnownValue = (value: string, knownValues: string[]) => {
+      const cleaned = cleanValue(value);
+      if (!cleaned) return "";
+
+      const exact = findKnownInText(cleaned, knownValues);
+      if (exact) return exact;
+
+      const valueCompact = compact(cleaned);
+      let best = { value: "", score: Number.POSITIVE_INFINITY };
+
+      knownValues.forEach((known) => {
+        const knownCompact = compact(known);
+        if (knownCompact.length < 3 || valueCompact.length < 3) return;
+
+        const score = distance(valueCompact, knownCompact);
+        const ratio = score / Math.max(valueCompact.length, knownCompact.length);
+
+        if (ratio <= 0.34 && score < best.score) {
+          best = { value: known, score };
+        }
+      });
+
+      return best.value || cleaned;
     };
 
     const numberWords: Record<string, number> = {
@@ -374,13 +516,31 @@ export default function App() {
     };
 
     const parseSpokenNumber = (value: string) => {
-      const digits = value.replace(/[^\d]/g, "");
-      if (digits) return digits;
+      const decimalMatch = value.match(/(\d+)\s+virgule\s+(\d+)/);
+      if (decimalMatch) {
+        return normalizeAriaryInput(`${decimalMatch[1]},${decimalMatch[2]}`);
+      }
+
+      const digits = value.match(/\d+/)?.[0] || "";
+      if (digits) return normalizeAriaryInput(digits);
+
+      const words = value.split(/\s+/);
+      const decimalWordIndex = words.indexOf("virgule");
+      if (decimalWordIndex > 0 && decimalWordIndex < words.length - 1) {
+        const before = words.slice(0, decimalWordIndex).join(" ");
+        const after = words.slice(decimalWordIndex + 1).join(" ");
+        const beforeNumber = parseSpokenNumber(before).replace(/000$/, "");
+        const afterNumber =
+          numberWords[after] !== undefined ? String(numberWords[after]) : "";
+        if (beforeNumber && afterNumber) {
+          return normalizeAriaryInput(`${beforeNumber},${afterNumber}`);
+        }
+      }
 
       let total = 0;
       let current = 0;
 
-      value.split(/\s+/).forEach((word) => {
+      words.forEach((word) => {
         if (word in numberWords) {
           current += numberWords[word];
           return;
@@ -398,7 +558,7 @@ export default function App() {
       });
 
       const amount = total + current;
-      return amount > 0 ? String(amount) : "";
+      return amount > 0 ? normalizeAriaryInput(String(amount)) : "";
     };
 
     const phoneMatch = text.match(/(?:\+?261|0)\s*3[2-8](?:\s*\d){7}/);
@@ -407,23 +567,53 @@ export default function App() {
       ? `0${contactDigits.slice(3)}`
       : contactDigits;
 
-    const client = extractValue(["client", "nom"]);
-    const lieu = extractValue(["lieu", "adresse", "destination"]);
-    const prix = parseSpokenNumber(extractValue(["prix", "montant", "tarif", "colis"]));
-    const frais = parseSpokenNumber(extractValue(["frais", "livraison"]));
-    const description = extractValue(["description", "article"]);
+    const clientValue = extractValue("client") || extractValue("nom");
+    const lieuValue = extractValue("lieu");
+    const client = matchKnownValue(clientValue, knownClients) || findKnownInText(text, knownClients) || "";
+    const lieu = matchKnownValue(lieuValue, knownPlaces) || findKnownInText(text, knownPlaces) || "";
+    const prix = parseSpokenNumber(extractValue("prix"));
+    const frais = parseSpokenNumber(extractValue("frais"));
+    const description = cleanValue(extractValue("description"));
+
+    const updates: Partial<typeof form> = {};
+    const fields: string[] = [];
+
+    if (client) {
+      updates.client = client;
+      fields.push("client");
+    }
+    if (contact) {
+      updates.contact = contact;
+      fields.push("contact");
+    }
+    if (lieu) {
+      updates.lieu = lieu;
+      fields.push("lieu");
+    }
+    if (prix) {
+      updates.prix = prix;
+      fields.push("prix");
+    }
+    if (frais) {
+      updates.frais = frais;
+      fields.push("frais");
+    }
+    if (description) {
+      updates.description = description;
+      fields.push("description");
+    }
 
     setForm((prev) => ({
       ...prev,
-      client: client || prev.client,
-      clientType: client && isPartnerClient(client) ? "entreprise" : prev.clientType,
-      contact: contact || prev.contact,
-      lieu: lieu || prev.lieu,
-      prix: prix || prev.prix,
-      frais: frais || prev.frais,
-      description: description || prev.description,
+      ...updates,
+      clientType:
+        updates.client && isPartnerClient(updates.client)
+          ? "entreprise"
+          : prev.clientType,
     }));
-  }, []);
+
+    return { fields, text };
+  }, [deliveries]);
 
   const applyVoiceDraft = useCallback(() => {
     if (!voiceDraft.trim()) {
@@ -431,8 +621,12 @@ export default function App() {
       return;
     }
 
-    fillDeliveryFromVoice(voiceDraft);
-    setVoiceMessage(`Phrase appliquee : ${voiceDraft}`);
+    const result = fillDeliveryFromVoice(voiceDraft);
+    setVoiceMessage(
+      result.fields.length
+        ? `Champs reconnus : ${result.fields.join(", ")}`
+        : "Aucun champ livraison reconnu dans la phrase."
+    );
   }, [fillDeliveryFromVoice, voiceDraft]);
 
   const startVoiceDelivery = useCallback(() => {
@@ -457,8 +651,12 @@ export default function App() {
 
     recognition.onresult = (event) => {
       const transcript = event.results[0]?.[0]?.transcript || "";
-      fillDeliveryFromVoice(transcript);
-      setVoiceMessage(`Entendu : ${transcript}`);
+      const result = fillDeliveryFromVoice(transcript);
+      setVoiceMessage(
+        result.fields.length
+          ? `Entendu : ${transcript} / champs reconnus : ${result.fields.join(", ")}`
+          : `Entendu : ${transcript} / aucun champ livraison reconnu.`
+      );
     };
 
     recognition.onerror = (event) => {
@@ -639,6 +837,10 @@ export default function App() {
 
   const financeStats = useMemo(() => {
     const faites = deliveriesForDate.filter((d) => d.status === "faite");
+    const otherGainsForDate = otherGains.filter((g) => g.date === selectedDate);
+    const otherExpensesForDate = otherExpenses.filter(
+      (e) => e.date === selectedDate
+    );
 
     const normalDone = faites.filter((d) => !isPartnerClient(d.client));
     const pomanaiDone = faites.filter((d) => d.client === "pomanai");
@@ -653,6 +855,16 @@ export default function App() {
 
     const pomanaiPrixColis = pomanaiDone.reduce((sum, d) => sum + d.prix, 0);
     const zazatianaPrixColis = zazatianaDone.reduce((sum, d) => sum + d.prix, 0);
+    const isPartnerFraisReceived = (d: Delivery) =>
+      d.paymentStatus === "recu" && d.fraisPayment !== "direct_client";
+    const pomanaiFraisLivraisonRecu = pomanaiDone
+      .filter(isPartnerFraisReceived)
+      .reduce((sum, d) => sum + d.frais, 0);
+    const zazatianaFraisLivraisonRecu = zazatianaDone
+      .filter(isPartnerFraisReceived)
+      .reduce((sum, d) => sum + d.frais, 0);
+    const partnerFraisLivraisonRecu =
+      pomanaiFraisLivraisonRecu + zazatianaFraisLivraisonRecu;
 
     const totalRecusClientsFinance = normalDone.reduce(
   (sum, d) =>
@@ -664,14 +876,18 @@ export default function App() {
   0
 );
 
-    const manualGains = otherGains.reduce((sum, g) => sum + g.amount, 0);
-    const manualExpenses = otherExpenses.reduce((sum, e) => sum + e.amount, 0);
+    const manualGains = otherGainsForDate.reduce((sum, g) => sum + g.amount, 0);
+    const manualExpenses = otherExpensesForDate.reduce(
+      (sum, e) => sum + e.amount,
+      0
+    );
 
     const totalGains =
       autoPrixColis +
       autoFraisLivraison +
       pomanaiPrixColis +
       zazatianaPrixColis +
+      partnerFraisLivraisonRecu +
       manualGains;
 
     const totalExpenses = totalRecusClientsFinance + manualExpenses;
@@ -682,6 +898,9 @@ export default function App() {
       autoFraisLivraison,
       pomanaiPrixColis,
       zazatianaPrixColis,
+      pomanaiFraisLivraisonRecu,
+      zazatianaFraisLivraisonRecu,
+      partnerFraisLivraisonRecu,
       totalRecusClientsFinance,
       manualGains,
       manualExpenses,
@@ -689,7 +908,7 @@ export default function App() {
       totalExpenses,
       balance,
     };
-  }, [deliveriesForDate, otherGains, otherExpenses]);
+  }, [deliveriesForDate, otherGains, otherExpenses, selectedDate]);
 
   const buildPartnerStats = useCallback(
     (partnerName: string, purchases: PartnerPurchaseEntry[]) => {
@@ -744,19 +963,30 @@ export default function App() {
 
   const aterinayStats = useMemo(() => {
     const faites = deliveriesForDate.filter((d) => d.status === "faite");
+    const otherGainsForDate = otherGains.filter((g) => g.date === selectedDate);
+    const otherExpensesForDate = otherExpenses.filter(
+      (e) => e.date === selectedDate
+    );
     const totalFrais = faites.reduce((sum, d) => sum + d.frais, 0);
     const totalDeliveries = faites.length;
     const logistics = totalDeliveries * 500;
-    const result = totalFrais - totalSalaries - logistics;
+    const manualGains = otherGainsForDate.reduce((sum, g) => sum + g.amount, 0);
+    const manualExpenses = otherExpensesForDate.reduce(
+      (sum, e) => sum + e.amount,
+      0
+    );
+    const result = totalFrais + manualGains - totalSalaries - logistics - manualExpenses;
 
     return {
       totalFrais,
       totalDeliveries,
+      manualGains,
+      manualExpenses,
       logistics,
       totalSalaries,
       result,
     };
-  }, [deliveriesForDate, totalSalaries]);
+  }, [deliveriesForDate, otherGains, otherExpenses, selectedDate, totalSalaries]);
 
   const unlockApp = useCallback(() => {
     if (pinInput === APP_PIN) {
@@ -850,7 +1080,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       updated.client = String(value).trim().toLowerCase();
       updated.clientType = isPartnerClient(updated.client)
         ? "entreprise"
-        : updated.clientType;
+        : "normal";
     }
 
     if (field === "clientType") {
@@ -886,20 +1116,49 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
 );
           
 
-  const togglePaymentReceived = useCallback((id: number) => {
+  const togglePaymentReceived = useCallback(async (id: number) => {
+    const current = deliveries.find((d) => d.id === id);
+    if (!current) return;
+
+    const nextPaymentStatus =
+      current.paymentStatus === "recu" ? "non_recu" : "recu";
+
     setDeliveries((prev) =>
       prev.map((d) =>
         d.id === id
           ? {
               ...d,
-              paymentStatus: d.paymentStatus === "recu" ? "non_recu" : "recu",
+              paymentStatus: nextPaymentStatus,
             }
           : d
       )
     );
-  }, []);
 
-  const markAllRiderPaymentsReceived = useCallback((riderName: string) => {
+    const { error } = await supabase
+      .from("deliveries")
+      .update({ paymentStatus: nextPaymentStatus })
+      .eq("id", id);
+
+    if (error) {
+      console.log("SUPABASE PAYMENT UPDATE ERROR:", error);
+      alert("Erreur Supabase : le statut de paiement n'a pas ete enregistre.");
+      setDeliveries((prev) =>
+        prev.map((d) => (d.id === id ? current : d))
+      );
+    }
+  }, [deliveries]);
+
+  const markAllRiderPaymentsReceived = useCallback(async (riderName: string) => {
+    const idsToMark = deliveries
+      .filter((d) => d.date === selectedDate)
+      .filter((d) => d.rider === riderName)
+      .filter((d) => getRiderVersement(d) > 0)
+      .map((d) => d.id);
+
+    if (idsToMark.length === 0) return;
+
+    const previousDeliveries = deliveries;
+
     setDeliveries((prev) =>
       prev.map((d) => {
         if (d.date !== selectedDate) return d;
@@ -908,7 +1167,18 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
         return { ...d, paymentStatus: "recu" };
       })
     );
-  }, [selectedDate]);
+
+    const { error } = await supabase
+      .from("deliveries")
+      .update({ paymentStatus: "recu" })
+      .in("id", idsToMark);
+
+    if (error) {
+      console.log("SUPABASE MARK ALL PAYMENT ERROR:", error);
+      alert("Erreur Supabase : les versements recus n'ont pas ete enregistres.");
+      setDeliveries(previousDeliveries);
+    }
+  }, [deliveries, selectedDate]);
 
   const deleteDelivery = useCallback(async (id: number) => {
   const { error } = await supabase
@@ -999,30 +1269,34 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
   }, [confirmRiderId, riders, form.rider, activeRiders]);
 
   const addOtherGain = useCallback(() => {
-    if (!gainForm.label.trim() || !gainForm.amount) return;
+    const normalizedAmount = normalizeAriaryInput(gainForm.amount);
+    if (!gainForm.label.trim() || !normalizedAmount) return;
     setOtherGains((prev) => [
       {
         id: Date.now(),
+        date: selectedDate,
         label: gainForm.label.trim(),
-        amount: Number(gainForm.amount),
+        amount: Number(normalizedAmount),
       },
       ...prev,
     ]);
     setGainForm({ label: "", amount: "" });
-  }, [gainForm]);
+  }, [gainForm, selectedDate]);
 
   const addOtherExpense = useCallback(() => {
-    if (!expenseForm.label.trim() || !expenseForm.amount) return;
+    const normalizedAmount = normalizeAriaryInput(expenseForm.amount);
+    if (!expenseForm.label.trim() || !normalizedAmount) return;
     setOtherExpenses((prev) => [
       {
         id: Date.now(),
+        date: selectedDate,
         label: expenseForm.label.trim(),
-        amount: Number(expenseForm.amount),
+        amount: Number(normalizedAmount),
       },
       ...prev,
     ]);
     setExpenseForm({ label: "", amount: "" });
-  }, [expenseForm]);
+  }, [expenseForm, selectedDate]);
 
   const deleteOtherGain = useCallback((id: number) => {
     setOtherGains((prev) => prev.filter((g) => g.id !== id));
@@ -1154,6 +1428,14 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
     );
   }, []);
 
+  const currentMainView = getMainView(view);
+  const switchMainView = useCallback((nextView: MainAppView) => {
+    setView(nextView);
+    setOpenDeliveryId(null);
+    setOpenPartner(null);
+    setOpenSalaryRider(null);
+  }, []);
+
   if (!isUnlocked) {
     return (
       <div className="lockPage">
@@ -1183,7 +1465,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
   }
 
   return (
-    <div className="app">
+    <div className={`app appView-${currentMainView}`}>
       <header className="hero ultraCompactHero compactHeaderShell">
         <div className="heroTopLine compactHeaderTop">
           <div className="heroTitleMini">
@@ -1225,32 +1507,15 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
           <div className="compactHeaderField compactHeaderSelect">
             <label>Interface</label>
             <select
-              value={
-                view === "livreur_details"
-                  ? "livreurs"
-                  : view === "client_details"
-                    ? "clients"
-                    : view
-              }
-              onChange={(e) => {
-                const nextView = e.target.value as Exclude<
-                  AppView,
-                  "livreur_details" | "client_details"
-                >;
-                setView(nextView);
-                setOpenDeliveryId(null);
-                setOpenPartner(null);
-                setOpenSalaryRider(null);
-              }}
+              value={currentMainView}
+              onChange={(e) => switchMainView(e.target.value as MainAppView)}
               className="pageSelect"
             >
-              <option value="livreurs">Livreurs</option>
-              <option value="clients">Clients</option>
-              <option value="finance">Finance</option>
-              <option value="pomanai">POMANAI</option>
-              <option value="zazatiana">ZAZATIANA</option>
-              <option value="salaires">Salaires</option>
-              <option value="aterinay">ATERINAY</option>
+              {MAIN_VIEW_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -1266,29 +1531,33 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
         </div>
       </header>
 
-      <div style={{ padding: 15, borderTop: "2px solid #ddd" }}>
-  <h3>Assistant IA</h3>
+      <details className="assistantPanel">
+        <summary>Assistant IA</summary>
+        <div className="assistantContent">
+          <input
+            type="search"
+            placeholder="Question sur les livraisons, clients, salaires..."
+            value={assistantQuestion}
+            onChange={(e) => setAssistantQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") askAssistant();
+            }}
+          />
 
-  <input
-    type="text"
-    placeholder="Pose ta question..."
-    value={assistantQuestion}
-    onChange={(e) => setAssistantQuestion(e.target.value)}
-    style={{ width: "100%", padding: 10, marginBottom: 10 }}
-  />
+          <button
+            className="primaryBtn"
+            type="button"
+            onClick={askAssistant}
+            disabled={assistantLoading}
+          >
+            {assistantLoading ? "Analyse..." : "Demander"}
+          </button>
 
-  <button onClick={askAssistant}>
-    Demander
-  </button>
-
-  {assistantLoading && <p>Chargement...</p>}
-
-  {assistantAnswer && (
-    <div style={{ marginTop: 10, background: "#f5f5f5", padding: 10 }}>
-      {assistantAnswer}
-    </div>
-  )}
-</div>
+          {assistantAnswer && (
+            <div className="assistantAnswer">{assistantAnswer}</div>
+          )}
+        </div>
+      </details>
 
       {view === "livreurs" && (
         <LivreursView
@@ -1333,6 +1602,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       {view === "livreur_details" && (
         <LivreurDetails
           selectedRiderGroup={selectedRiderGroup}
+          riders={activeRiders}
           openDeliveryId={openDeliveryId}
           onBack={() => {
             setView("livreurs");
@@ -1365,6 +1635,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       {view === "client_details" && (
         <ClientDetails
           selectedClientGroup={selectedClientGroup}
+          riders={activeRiders}
           clientAdjustments={clientAdjustments.filter(
   (a) => a.client === selectedClientDetails
 )}
@@ -1386,8 +1657,9 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
       {view === "finance" && (
         <FinanceView
           financeStats={financeStats}
-          otherGains={otherGains}
-          otherExpenses={otherExpenses}
+          selectedDate={selectedDate}
+          otherGains={otherGains.filter((g) => g.date === selectedDate)}
+          otherExpenses={otherExpenses.filter((e) => e.date === selectedDate)}
           gainForm={gainForm}
           expenseForm={expenseForm}
           onGainFormChange={setGainForm}
@@ -1500,6 +1772,19 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
           </div>
         </div>
       )}
+
+      <nav className="mobileBottomNav" aria-label="Navigation principale">
+        {MAIN_VIEW_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={currentMainView === option.value ? "activeMobileNav" : ""}
+            onClick={() => switchMainView(option.value)}
+          >
+            {option.mobileLabel}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

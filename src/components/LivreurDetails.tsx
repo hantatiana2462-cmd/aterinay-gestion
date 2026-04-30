@@ -1,4 +1,4 @@
-import { Delivery } from "../types";
+import { Delivery, Rider } from "../types";
 import { formatAr, getRetourCount } from "../helpers";
 import DeliveryTable from "./DeliveryTable";
 import {
@@ -17,6 +17,7 @@ type RiderGroup = {
 
 type Props = {
   selectedRiderGroup: RiderGroup | null;
+  riders: Rider[];
   openDeliveryId: number | null;
   onBack: () => void;
   onToggleOpen: (id: number) => void;
@@ -27,6 +28,7 @@ type Props = {
 
 export default function LivreurDetails({
   selectedRiderGroup,
+  riders,
   openDeliveryId,
   onBack,
   onToggleOpen,
@@ -113,6 +115,7 @@ export default function LivreurDetails({
 
           <DeliveryTable
             rows={selectedRiderGroup.rows}
+            riders={riders}
             openDeliveryId={openDeliveryId}
             showClient={true}
             onToggleOpen={onToggleOpen}

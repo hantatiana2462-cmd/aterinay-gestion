@@ -179,6 +179,87 @@ export async function generatePayrollSlipPdf(payroll: PayrollStat) {
   doc.save(`fiche_paie_${safeFilePart(fullName)}.pdf`);
 }
 
+export async function generatePayrollSlipTicketPdf(payroll: PayrollStat) {
+  const fullName = payroll.fullName?.trim() || payroll.rider;
+  const period =
+    payroll.periodStart || payroll.periodEnd
+      ? `${formatDate(payroll.periodStart)} - ${formatDate(payroll.periodEnd)}`
+      : "Non renseignee";
+  const height = Math.max(160, 120 + payroll.advances.length * 9);
+  const doc = new jsPDF({ unit: "mm", format: [80, height] });
+  const logoData = await loadImageData(logo);
+  let y = 8;
+
+  doc.addImage(logoData, "PNG", 31, y, 18, 18);
+  y += 22;
+  doc.setFontSize(11);
+  doc.text("FICHE SALAIRE", 40, y, { align: "center" });
+  y += 5;
+  doc.setFontSize(8);
+  doc.text("Aterinay", 40, y, { align: "center" });
+  y += 7;
+  doc.line(4, y, 76, y);
+  y += 5;
+
+  doc.text(`Employe: ${fullName}`, 4, y);
+  y += 5;
+  doc.text(`CIN: ${payroll.cin?.trim() || "-"}`, 4, y);
+  y += 5;
+  doc.text(`Poste: ${payroll.role || "Livreur"}`, 4, y);
+  y += 5;
+  doc.text(`Periode: ${period}`, 4, y);
+  y += 5;
+  doc.text(`Reception: ${formatDate(payroll.paymentDate)}`, 4, y);
+  y += 5;
+  doc.text(`Paiement: ${payroll.paymentMethod || "-"}`, 4, y);
+  y += 5;
+  if (payroll.paymentReference) {
+    doc.text(`Ref: ${payroll.paymentReference}`, 4, y);
+    y += 5;
+  }
+
+  doc.line(4, y, 76, y);
+  y += 6;
+  doc.text("Salaire base", 4, y);
+  doc.text(formatAr(payroll.baseSalary), 76, y, { align: "right" });
+  y += 5;
+  doc.text(`Recuperations (${payroll.recoveries})`, 4, y);
+  doc.text(formatAr(payroll.recoveryAmount), 76, y, { align: "right" });
+  y += 5;
+  doc.text("Avances", 4, y);
+  doc.text(`-${formatAr(payroll.advancesTotal)}`, 76, y, { align: "right" });
+  y += 6;
+  doc.line(4, y, 76, y);
+  y += 6;
+  doc.setFontSize(10);
+  doc.text("NET A PAYER", 4, y);
+  doc.text(formatAr(payroll.totalSalary), 76, y, { align: "right" });
+  y += 7;
+
+  if (payroll.advances.length > 0) {
+    doc.setFontSize(8);
+    doc.text("Details avances", 4, y);
+    y += 5;
+    payroll.advances.forEach((advance) => {
+      const label = `${formatDate(advance.date)} ${advance.label}`;
+      doc.text(doc.splitTextToSize(label, 48), 4, y);
+      doc.text(formatAr(advance.amount), 76, y, { align: "right" });
+      y += 8;
+    });
+  }
+
+  y += 4;
+  doc.setFontSize(8);
+  doc.text("Signature employe", 4, y);
+  doc.line(4, y + 12, 36, y + 12);
+  doc.text("Responsable", 44, y);
+  doc.line(44, y + 12, 76, y + 12);
+  y += 20;
+  doc.text("Ticket genere par Aterinay", 40, y, { align: "center" });
+
+  doc.save(`ticket_salaire_${safeFilePart(fullName)}.pdf`);
+}
+
 export async function generatePayrollSummaryPdf(params: {
   payrollStats: PayrollStat[];
   totalSalaries: number;

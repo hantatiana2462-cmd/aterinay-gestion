@@ -6,7 +6,14 @@ type FinanceStats = {
   autoFraisLivraison: number;
   pomanaiPrixColis: number;
   zazatianaPrixColis: number;
+  pomanaiFraisLivraisonRecu: number;
+  zazatianaFraisLivraisonRecu: number;
+  partnerFraisLivraisonRecu: number;
   totalRecusClientsFinance: number;
+  manualGains: number;
+  manualExpenses: number;
+  totalGains: number;
+  totalExpenses: number;
   balance: number;
 };
 
@@ -14,6 +21,7 @@ type EntryForm = { label: string; amount: string };
 
 type Props = {
   financeStats: FinanceStats;
+  selectedDate: string;
   otherGains: MoneyEntry[];
   otherExpenses: MoneyEntry[];
   gainForm: EntryForm;
@@ -28,6 +36,7 @@ type Props = {
 
 export default function FinanceView({
   financeStats,
+  selectedDate,
   otherGains,
   otherExpenses,
   gainForm,
@@ -58,9 +67,37 @@ export default function FinanceView({
           <span>Prix colis ZAZATIANA</span>
           <strong>{formatAr(financeStats.zazatianaPrixColis)}</strong>
         </div>
+        <div className="statCard compactStatCard gainCard">
+          <span>Frais reçus POMANAI</span>
+          <strong>{formatAr(financeStats.pomanaiFraisLivraisonRecu)}</strong>
+        </div>
+        <div className="statCard compactStatCard gainCard">
+          <span>Frais reçus ZAZATIANA</span>
+          <strong>{formatAr(financeStats.zazatianaFraisLivraisonRecu)}</strong>
+        </div>
+        <div className="statCard compactStatCard gainCard">
+          <span>Total frais partenaires reçus</span>
+          <strong>{formatAr(financeStats.partnerFraisLivraisonRecu)}</strong>
+        </div>
         <div className="statCard compactStatCard">
           <span>Reçus clients</span>
           <strong>{formatAr(financeStats.totalRecusClientsFinance)}</strong>
+        </div>
+        <div className="statCard compactStatCard gainCard">
+          <span>Autres entrées jour</span>
+          <strong>{formatAr(financeStats.manualGains)}</strong>
+        </div>
+        <div className="statCard compactStatCard expenseCard">
+          <span>Autres dépenses jour</span>
+          <strong>{formatAr(financeStats.manualExpenses)}</strong>
+        </div>
+        <div className="statCard compactStatCard gainCard">
+          <span>Total entrées</span>
+          <strong>{formatAr(financeStats.totalGains)}</strong>
+        </div>
+        <div className="statCard compactStatCard expenseCard">
+          <span>Total sorties</span>
+          <strong>{formatAr(financeStats.totalExpenses)}</strong>
         </div>
         <div
           className={`statCard compactStatCard ${
@@ -75,6 +112,7 @@ export default function FinanceView({
       <section className="twoCols financeCols">
         <div className="panel">
           <h2>Autres entrées</h2>
+          <p className="emptySmall">Enregistrées pour le {selectedDate}</p>
 
           <div className="financeEntryForm">
             <input
@@ -85,7 +123,7 @@ export default function FinanceView({
               }
             />
             <input
-              type="number"
+              inputMode="decimal"
               placeholder="Montant"
               value={gainForm.amount}
               onChange={(e) =>
@@ -105,7 +143,7 @@ export default function FinanceView({
                 <div className="moneyItem gainItem" key={g.id}>
                   <div>
                     <strong>{g.label}</strong>
-                    <small>{formatAr(g.amount)}</small>
+                    <small>{(g.date || selectedDate) + " · " + formatAr(g.amount)}</small>
                   </div>
                   <button
                     className="deleteBtn"
@@ -121,6 +159,7 @@ export default function FinanceView({
 
         <div className="panel">
           <h2>Autres dépenses</h2>
+          <p className="emptySmall">Enregistrées pour le {selectedDate}</p>
 
           <div className="financeEntryForm">
             <input
@@ -131,7 +170,7 @@ export default function FinanceView({
               }
             />
             <input
-              type="number"
+              inputMode="decimal"
               placeholder="Montant"
               value={expenseForm.amount}
               onChange={(e) =>
@@ -151,7 +190,7 @@ export default function FinanceView({
                 <div className="moneyItem expenseItem" key={e.id}>
                   <div>
                     <strong>{e.label}</strong>
-                    <small>{formatAr(e.amount)}</small>
+                    <small>{(e.date || selectedDate) + " · " + formatAr(e.amount)}</small>
                   </div>
                   <button
                     className="deleteBtn"

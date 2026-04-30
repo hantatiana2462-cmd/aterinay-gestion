@@ -200,6 +200,11 @@ autoTable(doc, {
       data.cell.styles.fillColor = [255, 237, 213];
       data.cell.styles.textColor = [154, 52, 18];
     }
+
+    if (data.column.index === 0 && deliveryRows[data.row.index]?.retour === "R") {
+      data.cell.styles.textColor = [220, 38, 38];
+      data.cell.styles.fontStyle = "bold";
+    }
   },
 });
 
@@ -328,7 +333,11 @@ export async function generateClientReceiptTicketPdf(params: {
     y += 5;
 
     if (d.retours > 0) {
+      doc.setTextColor(220, 38, 38);
+      doc.setFont("helvetica", "bold");
       doc.text("Retour: R", margin + 2, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(0, 0, 0);
       y += 5;
     }
 

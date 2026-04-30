@@ -1,6 +1,11 @@
-import { Delivery, PartnerPurchaseEntry } from "../types";
+import { useState } from "react";
+import { Delivery, PartnerInvoiceData, PartnerPurchaseEntry } from "../types";
 import { formatAr, isSameMonth, normalizeAriaryInput, statusLabel } from "../helpers";
 import { generatePartnerReportPdf } from "../utils/partnerReportPdf";
+import {
+  generatePartnerInvoicePdf,
+  generatePartnerInvoiceTicketPdf,
+} from "../utils/partnerInvoicePdf";
 
 type PartnerStats = {
   dailyRows: Delivery[];
@@ -46,18 +51,71 @@ export default function PartnerView({
   onAddPurchase,
   onDeletePurchase,
 }: Props) {
+  const [invoice, setInvoice] = useState<PartnerInvoiceData>({
+    partnerKey,
+    sellerCompany: title,
+    buyerName: "",
+    sellerName: "",
+    invoiceDate: selectedDate,
+    lines: [{ id: Date.now(), product: "", unitPrice: 0, quantity: 1 }],
+  });
+
   const monthlyPurchases = purchases.filter((p) =>
     isSameMonth(p.date, selectedDate)
   );
   const dailyPurchases = purchases.filter((p) => p.date === selectedDate);
+  const doneDay = stats.dailyRows.filter((d) => d.status === "faite");
+  const failedDay = stats.dailyRows.filter((d) => d.status === "non_faite");
+  const pendingDay = stats.dailyRows.filter((d) => d.status === "en_cours");
   const doneMonth = stats.monthlyRows.filter((d) => d.status === "faite");
   const failedMonth = stats.monthlyRows.filter((d) => d.status === "non_faite");
   const pendingMonth = stats.monthlyRows.filter((d) => d.status === "en_cours");
+  const dailyFrais = doneDay.reduce((sum, d) => sum + d.frais, 0);
   const monthlyFrais = doneMonth.reduce((sum, d) => sum + d.frais, 0);
 
   const normalizePurchaseAmount = () => {
     const amount = normalizeAriaryInput(formState.amount);
     if (amount) onFormChange({ ...formState, amount });
+  };
+
+  const cleanInvoice = {
+    ...invoice,
+    partnerKey,
+    sellerCompany: invoice.sellerCompany.trim() || title,
+    invoiceDate: invoice.invoiceDate || selectedDate,
+    lines: invoice.lines.map((line) => ({
+      ...line,
+      unitPrice: Number(normalizeAriaryInput(String(line.unitPrice)) || line.unitPrice),
+      quantity: Number(line.quantity || 0),
+    })),
+  };
+
+  const invoiceTotal = cleanInvoice.lines.reduce(
+    (sum, line) => sum + line.unitPrice * line.quantity,
+    0
+  );
+
+  const updateInvoiceLine = (
+    id: number,
+    field: "product" | "unitPrice" | "quantity",
+    value: string
+  ) => {
+    setInvoice((prev) => ({
+      ...prev,
+      lines: prev.lines.map((line) =>
+        line.id === id
+          ? {
+              ...line,
+              [field]:
+                field === "product"
+                  ? value
+                  : field === "unitPrice"
+                    ? Number(normalizeAriaryInput(value) || 0)
+                    : Number(value || 0),
+            }
+          : line
+      ),
+    }));
   };
 
   return (
@@ -66,6 +124,18 @@ export default function PartnerView({
         <div className="statCard compactStatCard">
           <span>Ventes colis jour</span>
           <strong>{formatAr(stats.dailyColis)}</strong>
+        </div>
+        <div className="statCard compactStatCard">
+          <span>Achats jour</span>
+          <strong>{formatAr(stats.dailyPurchases)}</strong>
+        </div>
+        <div
+          className={`statCard compactStatCard ${
+            stats.dailyProfit >= 0 ? "gainCard" : "expenseCard"
+          }`}
+        >
+          <span>Benefice jour</span>
+          <strong>{formatAr(stats.dailyProfit)}</strong>
         </div>
         <div className="statCard compactStatCard">
           <span>Ventes colis mois</span>
@@ -90,9 +160,11 @@ export default function PartnerView({
           <div>
             <h2>{title}</h2>
             <p className="emptySmall">
-              {doneMonth.length} faites · {failedMonth.length} non faites ·{" "}
-              {pendingMonth.length} en cours · Frais livraison mois :{" "}
-              {formatAr(monthlyFrais)}
+              Jour : {doneDay.length} faites / {failedDay.length} non faites /{" "}
+              {pendingDay.length} en cours · Frais jour : {formatAr(dailyFrais)}
+              <br />
+              Mois : {doneMonth.length} faites / {failedMonth.length} non faites /{" "}
+              {pendingMonth.length} en cours · Frais mois : {formatAr(monthlyFrais)}
             </p>
           </div>
           <div className="actionGroup">
@@ -171,6 +243,172 @@ export default function PartnerView({
               />
             </div>
 
+            <div className="panel partnerInvoicePanel">
+              <div className="panelHeaderRow">
+                <div>
+                  <h3>Faire une facture</h3>
+                  <p className="emptySmall">
+                    Facture A4 ou ticket 80mm avec total automatique.
+                  </p>
+                </div>
+                <div className="actionGroup">
+                  <button
+                    className="primaryBtn"
+                    type="button"
+                    onClick={() => generatePartnerInvoicePdf(cleanInvoice)}
+                  >
+                    Facture A4
+                  </button>
+                  <button
+                    className="secondaryBtn"
+                    type="button"
+                    onClick={() => generatePartnerInvoiceTicketPdf(cleanInvoice)}
+                  >
+                    Ticket 80mm
+                  </button>
+                </div>
+              </div>
+
+              <div className="editGrid">
+                <div className="fieldBlock">
+                  <label>Nom du client acheteur</label>
+                  <input
+                    value={invoice.buyerName}
+                    placeholder="Client qui achete"
+                    onChange={(e) =>
+                      setInvoice((prev) => ({ ...prev, buyerName: e.target.value }))
+                    }
+                  />
+                </div>
+                <div className="fieldBlock">
+                  <label>Entreprise qui vend</label>
+                  <input
+                    value={invoice.sellerCompany}
+                    placeholder={title}
+                    onChange={(e) =>
+                      setInvoice((prev) => ({
+                        ...prev,
+                        sellerCompany: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="fieldBlock">
+                  <label>Date facture</label>
+                  <input
+                    type="date"
+                    value={invoice.invoiceDate}
+                    onChange={(e) =>
+                      setInvoice((prev) => ({
+                        ...prev,
+                        invoiceDate: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="fieldBlock">
+                  <label>Nom signature vendeur</label>
+                  <input
+                    value={invoice.sellerName}
+                    placeholder="Celui qui vend"
+                    onChange={(e) =>
+                      setInvoice((prev) => ({ ...prev, sellerName: e.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="deliveryTableWrap invoiceTableWrap">
+                <table className="deliveryTable">
+                  <thead>
+                    <tr>
+                      <th>Produit</th>
+                      <th>Prix unitaire</th>
+                      <th>Nombre</th>
+                      <th>Total produit</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoice.lines.map((line) => (
+                      <tr key={line.id}>
+                        <td>
+                          <input
+                            value={line.product}
+                            placeholder="Nom du produit"
+                            onChange={(e) =>
+                              updateInvoiceLine(line.id, "product", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            inputMode="decimal"
+                            value={line.unitPrice || ""}
+                            placeholder="Prix"
+                            onChange={(e) =>
+                              updateInvoiceLine(line.id, "unitPrice", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            min="1"
+                            value={line.quantity || ""}
+                            onChange={(e) =>
+                              updateInvoiceLine(line.id, "quantity", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <strong>{formatAr(line.unitPrice * line.quantity)}</strong>
+                        </td>
+                        <td>
+                          <button
+                            className="deleteBtn"
+                            type="button"
+                            onClick={() =>
+                              setInvoice((prev) => ({
+                                ...prev,
+                                lines:
+                                  prev.lines.length === 1
+                                    ? prev.lines
+                                    : prev.lines.filter((item) => item.id !== line.id),
+                              }))
+                            }
+                          >
+                            Supprimer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="financeTotal gainTotal">
+                <span>Prix total</span>
+                <strong>{formatAr(invoiceTotal)}</strong>
+              </div>
+
+              <button
+                className="secondaryBtn"
+                type="button"
+                onClick={() =>
+                  setInvoice((prev) => ({
+                    ...prev,
+                    lines: [
+                      ...prev.lines,
+                      { id: Date.now(), product: "", unitPrice: 0, quantity: 1 },
+                    ],
+                  }))
+                }
+              >
+                Ajouter un produit
+              </button>
+            </div>
+
             <div className="twoCols financeCols">
               <div className="panel">
                 <h3>Achats du mois</h3>
@@ -218,7 +456,28 @@ export default function PartnerView({
 
             <div className="panel">
               <h3>Livraisons du jour</h3>
-              <div className="deliveryTableWrap">
+              <div className="partnerMobileList">
+                {stats.dailyRows.length === 0 ? (
+                  <div className="emptySmall">Aucune livraison aujourd'hui.</div>
+                ) : (
+                  stats.dailyRows.map((d) => (
+                    <article className="partnerMobileCard" key={d.id}>
+                      <div>
+                        <strong>{d.lieu}</strong>
+                        <span>{statusLabel(d.status)}</span>
+                      </div>
+                      <div className="salaryMobileGrid">
+                        <span>Colis <strong>{formatAr(d.prix)}</strong></span>
+                        <span>Frais <strong>{formatAr(d.frais)}</strong></span>
+                      </div>
+                      {(d.raison || d.description) && (
+                        <p>{d.raison || d.description}</p>
+                      )}
+                    </article>
+                  ))
+                )}
+              </div>
+              <div className="deliveryTableWrap partnerDesktopTable">
                 <table className="deliveryTable">
                   <thead>
                     <tr>
@@ -252,7 +511,25 @@ export default function PartnerView({
 
             <div className="panel">
               <h3>Livraisons du mois</h3>
-              <div className="deliveryTableWrap">
+              <div className="partnerMobileList">
+                {stats.monthlyRows.length === 0 ? (
+                  <div className="emptySmall">Aucune livraison ce mois.</div>
+                ) : (
+                  stats.monthlyRows.map((d) => (
+                    <article className="partnerMobileCard" key={d.id}>
+                      <div>
+                        <strong>{d.lieu}</strong>
+                        <span>{d.date} / {statusLabel(d.status)}</span>
+                      </div>
+                      <div className="salaryMobileGrid">
+                        <span>Colis <strong>{formatAr(d.prix)}</strong></span>
+                        <span>Frais <strong>{formatAr(d.frais)}</strong></span>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+              <div className="deliveryTableWrap partnerDesktopTable">
                 <table className="deliveryTable">
                   <thead>
                     <tr>

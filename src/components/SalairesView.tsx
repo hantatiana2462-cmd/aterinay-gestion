@@ -2,6 +2,7 @@ import { RiderPayroll, SalaryAdvance } from "../types";
 import { formatAr, normalizeAriaryInput } from "../helpers";
 import {
   generatePayrollSlipPdf,
+  generatePayrollSlipTicketPdf,
   generatePayrollSummaryPdf,
 } from "../utils/payrollPdf";
 
@@ -107,7 +108,49 @@ export default function SalairesView({
           </button>
         </div>
 
-        <div className="deliveryTableWrap">
+        <div className="salaryMobileList">
+          {payrollStats.map((p) => (
+            <article className="salaryMobileCard" key={p.rider}>
+              <div>
+                <strong>{p.fullName || p.rider}</strong>
+                <span>{p.role || "Livreur"}</span>
+              </div>
+
+              <div className="salaryMobileGrid">
+                <span>Base <strong>{formatAr(p.baseSalary)}</strong></span>
+                <span>Recup. <strong>{formatAr(p.recoveryAmount)}</strong></span>
+                <span>Avances <strong>{formatAr(p.advancesTotal)}</strong></span>
+                <span>Net <strong>{formatAr(p.totalSalary)}</strong></span>
+              </div>
+
+              <div className="salaryMobileActions">
+                <button
+                  className="primaryBtn"
+                  type="button"
+                  onClick={() => generatePayrollSlipPdf(p)}
+                >
+                  Fiche PDF
+                </button>
+                <button
+                  className="secondaryBtn"
+                  type="button"
+                  onClick={() => generatePayrollSlipTicketPdf(p)}
+                >
+                  Ticket 80mm
+                </button>
+                <button
+                  className="secondaryBtn"
+                  type="button"
+                  onClick={() => onToggleRider(p.rider)}
+                >
+                  {openSalaryRider === p.rider ? "Fermer" : "Dossier"}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="deliveryTableWrap salaryDesktopTable">
           <table className="deliveryTable">
             <thead>
               <tr>
@@ -174,6 +217,13 @@ export default function SalairesView({
                       onClick={() => generatePayrollSlipPdf(p)}
                     >
                       Fiche PDF
+                    </button>
+                    <button
+                      className="secondaryBtn"
+                      type="button"
+                      onClick={() => generatePayrollSlipTicketPdf(p)}
+                    >
+                      Ticket 80mm
                     </button>
                     <button
                       className="secondaryBtn"

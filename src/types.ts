@@ -41,6 +41,7 @@ export type Rider = {
 
 export type MoneyEntry = {
   id: number;
+  date?: string;
   label: string;
   amount: number;
 };
@@ -50,6 +51,22 @@ export type PartnerPurchaseEntry = {
   date: string;
   amount: number;
   description: string;
+};
+
+export type PartnerInvoiceLine = {
+  id: number;
+  product: string;
+  unitPrice: number;
+  quantity: number;
+};
+
+export type PartnerInvoiceData = {
+  partnerKey: "pomanai" | "zazatiana";
+  sellerCompany: string;
+  buyerName: string;
+  sellerName: string;
+  invoiceDate: string;
+  lines: PartnerInvoiceLine[];
 };
 
 export type SalaryAdvance = {

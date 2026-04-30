@@ -86,6 +86,7 @@ export default function ClientReceiptView({
       </div>
 
       {/* ===== Tableau livraisons ===== */}
+      <div className="receiptTableWrap">
       <table className="receiptTable">
         <thead>
           <tr>
@@ -141,8 +142,8 @@ export default function ClientReceiptView({
                 : d.description.trim() || "-";
 
             return (
-              <tr key={d.id}>
-                <td>{d.retours > 0 ? "R" : "-"}</td>
+              <tr className={`receiptRow receiptStatus-${d.status}`} key={d.id}>
+                <td>{d.retours > 0 ? <span className="retourMark">R</span> : "-"}</td>
                 <td>{d.lieu}</td>
                 <td>{statusLabel(d.status)}</td>
                 <td>{receiptNote}</td>
@@ -154,12 +155,14 @@ export default function ClientReceiptView({
           })}
         </tbody>
       </table>
+      </div>
 
       {/* ===== Ajustements ===== */}
       {adjustments.length > 0 && (
         <div className="adjustmentsSection">
           <h3>Ajustements</h3>
 
+          <div className="receiptTableWrap">
           <table className="receiptTable">
             <thead>
               <tr>
@@ -177,6 +180,7 @@ export default function ClientReceiptView({
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
