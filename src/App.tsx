@@ -359,12 +359,29 @@ export default function App() {
     };
 
     const keywordAliases: Record<string, string[]> = {
-      client: ["client", "clients", "clien", "clian", "clyan", "klian", "kliyan", "nom"],
-      contact: ["contact", "telephone", "tel", "numero", "num"],
-      lieu: ["lieu", "lieux", "lie", "leu", "liou", "adresse", "destination", "quartier"],
+      client: [
+        "client",
+        "clients",
+        "cliente",
+        "clien",
+        "clian",
+        "cliant",
+        "clyan",
+        "clt",
+        "cli",
+        "klian",
+        "kliyan",
+        "klient",
+        "nom",
+      ],
+      contact: ["contact", "telephone", "tel", "numero", "num", "phone"],
+      lieu: ["lieu", "lieux", "lie", "leu", "liou", "adresse", "destination", "quartier", "endroit"],
       prix: ["prix", "pri", "prie", "montant", "tarif", "colis"],
-      frais: ["frais", "frai", "fray", "fre", "fret"],
+      frais: ["frais", "frai", "fray", "fre", "fret", "livraison"],
       description: ["description", "descriptions", "desc", "article", "produit", "commande"],
+      status: ["statut", "status", "etat"],
+      raison: ["raison", "motif", "cause"],
+      retour: ["retour", "retours", "r"],
     };
 
     const aliasToKeyword = Object.entries(keywordAliases).reduce<Record<string, string>>(
@@ -410,6 +427,7 @@ export default function App() {
       "livraison",
       "saisie",
       "pour",
+      "chez",
       "avec",
       "le",
       "la",
@@ -421,6 +439,7 @@ export default function App() {
       "des",
       "a",
       "au",
+      "sur",
     ]);
 
     const cleanValue = (value: string) =>
@@ -438,55 +457,119 @@ export default function App() {
       return cleanValue(text.match(regex)?.[1]?.trim() || "");
     };
 
-    const unique = (values: string[]) => {
-      const seen = new Set<string>();
-      return values
-        .map((value) => value.trim())
-        .filter((value) => {
-          const key = compact(value);
-          if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
+    const extractAfterStarter = (starters: string[]) => {
+      const starterPattern = starters.join("|");
+      const regex = new RegExp(
+        `(?:^|\\s)(?:${starterPattern})\\s+(.+?)(?=\\s+(?:${keywordPattern})\\s+|$)`,
+        "i"
+      );
+      return cleanValue(text.match(regex)?.[1]?.trim() || "");
+    };
+
+    type KnownVoiceValue = {
+      value: string;
+      compactValue: string;
+      count: number;
+      firstIndex: number;
+    };
+
+    const buildKnownValues = (
+      values: string[],
+      extras: readonly string[] = []
+    ) => {
+      const known = new Map<string, KnownVoiceValue>();
+
+      [...values, ...extras].forEach((value, index) => {
+        const cleaned = value.trim().toLowerCase();
+        const key = compact(cleaned);
+        if (!key) return;
+
+        const existing = known.get(key);
+        if (existing) {
+          existing.count += 1;
+          existing.firstIndex = Math.min(existing.firstIndex, index);
+          return;
+        }
+
+        known.set(key, {
+          value: cleaned,
+          compactValue: key,
+          count: extras.includes(value) ? 8 : 1,
+          firstIndex: index,
         });
-    };
-
-    const knownPlaces = unique(deliveries.map((delivery) => delivery.lieu));
-    const knownClients = unique(deliveries.map((delivery) => delivery.client));
-
-    const findKnownInText = (sourceText: string, knownValues: string[]) => {
-      const sourceCompact = compact(sourceText);
-      return knownValues.find((value) => {
-        const valueCompact = compact(value);
-        return (
-          valueCompact.length >= 3 &&
-          (sourceCompact.includes(valueCompact) || valueCompact.includes(sourceCompact))
-        );
       });
+
+      return [...known.values()].sort(
+        (a, b) => b.count - a.count || a.firstIndex - b.firstIndex
+      );
     };
 
-    const matchKnownValue = (value: string, knownValues: string[]) => {
+    const knownPlaces = buildKnownValues(deliveries.map((delivery) => delivery.lieu));
+    const knownClients = buildKnownValues(
+      deliveries.map((delivery) => delivery.client),
+      PARTNER_CLIENTS
+    );
+
+    const findKnownInText = (sourceText: string, knownValues: KnownVoiceValue[]) => {
+      const sourceCompact = compact(sourceText);
+      if (sourceCompact.length < 3) return null;
+
+      return (
+        knownValues.find((item) => {
+          if (item.compactValue.length < 3) return false;
+          return (
+            sourceCompact.includes(item.compactValue) ||
+            (sourceCompact.length >= 4 && item.compactValue.includes(sourceCompact))
+          );
+        }) ?? null
+      );
+    };
+
+    const matchKnownValue = (
+      value: string,
+      knownValues: KnownVoiceValue[],
+      allowRawValue: boolean
+    ) => {
       const cleaned = cleanValue(value);
-      if (!cleaned) return "";
+      if (!cleaned) return { value: "", corrected: false, source: "" };
 
       const exact = findKnownInText(cleaned, knownValues);
-      if (exact) return exact;
+      if (exact) {
+        return {
+          value: exact.value,
+          corrected: compact(cleaned) !== exact.compactValue,
+          source: cleaned,
+        };
+      }
 
       const valueCompact = compact(cleaned);
-      let best = { value: "", score: Number.POSITIVE_INFINITY };
+      let best = {
+        value: "",
+        score: Number.POSITIVE_INFINITY,
+        corrected: false,
+      };
 
       knownValues.forEach((known) => {
-        const knownCompact = compact(known);
-        if (knownCompact.length < 3 || valueCompact.length < 3) return;
+        if (known.compactValue.length < 3 || valueCompact.length < 2) return;
 
-        const score = distance(valueCompact, knownCompact);
-        const ratio = score / Math.max(valueCompact.length, knownCompact.length);
+        const score = distance(valueCompact, known.compactValue);
+        const ratio = score / Math.max(valueCompact.length, known.compactValue.length);
+        const isShort = valueCompact.length <= 3;
+        const accepted = isShort ? score <= 1 : ratio <= 0.38;
 
-        if (ratio <= 0.34 && score < best.score) {
-          best = { value: known, score };
+        if (!accepted) return;
+
+        const rankedScore = score - known.count * 0.05 + known.firstIndex * 0.001;
+        if (rankedScore < best.score) {
+          best = { value: known.value, score: rankedScore, corrected: true };
         }
       });
 
-      return best.value || cleaned;
+      if (best.value) {
+        return { value: best.value, corrected: best.corrected, source: cleaned };
+      }
+
+      return { value: allowRawValue ? cleaned : "", corrected: false, source: cleaned };
     };
 
     const numberWords: Record<string, number> = {
@@ -567,40 +650,126 @@ export default function App() {
       ? `0${contactDigits.slice(3)}`
       : contactDigits;
 
-    const clientValue = extractValue("client") || extractValue("nom");
+    const clientValue =
+      extractValue("client") ||
+      extractValue("nom") ||
+      extractAfterStarter(["pour", "chez"]);
     const lieuValue = extractValue("lieu");
-    const client = matchKnownValue(clientValue, knownClients) || findKnownInText(text, knownClients) || "";
-    const lieu = matchKnownValue(lieuValue, knownPlaces) || findKnownInText(text, knownPlaces) || "";
+    const explicitClientMatch = matchKnownValue(
+      clientValue,
+      knownClients,
+      Boolean(clientValue)
+    );
+    const clientMatch = explicitClientMatch.value
+      ? explicitClientMatch
+      : matchKnownValue(
+          findKnownInText(text, knownClients)?.value || "",
+          knownClients,
+          false
+        );
+    const explicitLieuMatch = matchKnownValue(
+      lieuValue,
+      knownPlaces,
+      Boolean(lieuValue)
+    );
+    const lieuMatch = explicitLieuMatch.value
+      ? explicitLieuMatch
+      : matchKnownValue(
+          findKnownInText(text, knownPlaces)?.value || "",
+          knownPlaces,
+          false
+        );
+    const client = clientMatch.value;
+    const lieu = lieuMatch.value;
     const prix = parseSpokenNumber(extractValue("prix"));
     const frais = parseSpokenNumber(extractValue("frais"));
     const description = cleanValue(extractValue("description"));
+    const retour = parseSpokenNumber(extractValue("retour"));
+    const raison = cleanValue(extractValue("raison"));
+
+    const parseStatus = () => {
+      if (/\b(non faite|pas faite|echec|annule|annulee|impossible)\b/.test(text)) {
+        return "non_faite" as DeliveryStatus;
+      }
+      if (/\b(en cours|attente|attendant)\b/.test(text)) {
+        return "en_cours" as DeliveryStatus;
+      }
+      if (/\b(faite|fait|termine|terminee|livree|valide)\b/.test(text)) {
+        return "faite" as DeliveryStatus;
+      }
+      return "";
+    };
+
+    const status = parseStatus();
 
     const updates: Partial<typeof form> = {};
     const fields: string[] = [];
+    const details: string[] = [];
 
     if (client) {
       updates.client = client;
       fields.push("client");
+      details.push(
+        clientMatch.corrected
+          ? `client: ${client} (corrige depuis "${clientMatch.source}")`
+          : `client: ${client}`
+      );
     }
     if (contact) {
       updates.contact = contact;
       fields.push("contact");
+      details.push(`contact: ${contact}`);
     }
     if (lieu) {
       updates.lieu = lieu;
       fields.push("lieu");
+      details.push(
+        lieuMatch.corrected
+          ? `lieu: ${lieu} (corrige depuis "${lieuMatch.source}")`
+          : `lieu: ${lieu}`
+      );
     }
     if (prix) {
       updates.prix = prix;
       fields.push("prix");
+      details.push(`prix: ${formatAr(Number(prix))}`);
     }
     if (frais) {
       updates.frais = frais;
       fields.push("frais");
+      details.push(`frais: ${formatAr(Number(frais))}`);
     }
     if (description) {
       updates.description = description;
       fields.push("description");
+      details.push(`description: ${description}`);
+    }
+    if (status) {
+      updates.status = status;
+      fields.push("statut");
+      details.push(`statut: ${statusLabel(status)}`);
+      if (status === "non_faite") {
+        updates.retours = "1";
+      }
+      if (status === "en_cours") {
+        updates.retours = "0";
+        updates.raison = "";
+      }
+      if (status === "faite" && !retour) {
+        updates.raison = "";
+      }
+    }
+    if (raison) {
+      updates.raison = raison;
+      updates.status = "non_faite";
+      updates.retours = "1";
+      fields.push("raison");
+      details.push(`raison: ${raison}`);
+    }
+    if (retour) {
+      updates.retours = String(Number(retour));
+      fields.push("retour");
+      details.push(`retour: ${Number(retour)}`);
     }
 
     setForm((prev) => ({
@@ -612,7 +781,7 @@ export default function App() {
           : prev.clientType,
     }));
 
-    return { fields, text };
+    return { fields, details, text };
   }, [deliveries]);
 
   const applyVoiceDraft = useCallback(() => {
@@ -624,7 +793,7 @@ export default function App() {
     const result = fillDeliveryFromVoice(voiceDraft);
     setVoiceMessage(
       result.fields.length
-        ? `Champs reconnus : ${result.fields.join(", ")}`
+        ? `Reconnu : ${result.details.join(" / ")}`
         : "Aucun champ livraison reconnu dans la phrase."
     );
   }, [fillDeliveryFromVoice, voiceDraft]);
@@ -654,7 +823,7 @@ export default function App() {
       const result = fillDeliveryFromVoice(transcript);
       setVoiceMessage(
         result.fields.length
-          ? `Entendu : ${transcript} / champs reconnus : ${result.fields.join(", ")}`
+          ? `Entendu : ${transcript} / reconnu : ${result.details.join(" / ")}`
           : `Entendu : ${transcript} / aucun champ livraison reconnu.`
       );
     };
@@ -846,12 +1015,34 @@ export default function App() {
     const pomanaiDone = faites.filter((d) => d.client === "pomanai");
     const zazatianaDone = faites.filter((d) => d.client === "zazatiana");
 
-    const autoPrixColis = normalDone.reduce(
-      (sum, d) => sum + (d.colisPayment === "direct_client" ? 0 : d.prix),
+    const clientColisNous = normalDone.reduce(
+      (sum, d) => sum + (d.colisPayment === "nous" ? d.prix : 0),
+      0
+    );
+    const clientColisMvola = normalDone.reduce(
+      (sum, d) => sum + (d.colisPayment === "mobile_money_nous" ? d.prix : 0),
+      0
+    );
+    const clientColisDirect = normalDone.reduce(
+      (sum, d) => sum + (d.colisPayment === "direct_client" ? d.prix : 0),
+      0
+    );
+    const clientFraisNous = normalDone.reduce(
+      (sum, d) => sum + (d.fraisPayment === "nous" ? d.frais : 0),
+      0
+    );
+    const clientFraisMvola = normalDone.reduce(
+      (sum, d) => sum + (d.fraisPayment === "mobile_money_nous" ? d.frais : 0),
+      0
+    );
+    const clientFraisDirect = normalDone.reduce(
+      (sum, d) => sum + (d.fraisPayment === "direct_client" ? d.frais : 0),
       0
     );
 
-    const autoFraisLivraison = normalDone.reduce((sum, d) => sum + d.frais, 0);
+    const autoPrixColis = clientColisNous + clientColisMvola;
+    const autoFraisLivraison =
+      clientFraisNous + clientFraisMvola + clientFraisDirect;
 
     const pomanaiPrixColis = pomanaiDone.reduce((sum, d) => sum + d.prix, 0);
     const zazatianaPrixColis = zazatianaDone.reduce((sum, d) => sum + d.prix, 0);
@@ -865,16 +1056,17 @@ export default function App() {
       .reduce((sum, d) => sum + d.frais, 0);
     const partnerFraisLivraisonRecu =
       pomanaiFraisLivraisonRecu + zazatianaFraisLivraisonRecu;
+    const partnerPrixColis = pomanaiPrixColis + zazatianaPrixColis;
 
-    const totalRecusClientsFinance = normalDone.reduce(
-  (sum, d) =>
-    sum +
-    (d.colisPayment === "nous" ||
-    d.colisPayment === "mobile_money_nous"
-      ? d.prix
-      : 0),
-  0
-);
+    const clientColisAReverser = clientColisNous + clientColisMvola;
+    const recoveryAmount = payrollStats.reduce(
+      (sum, p) => sum + p.recoveryAmount,
+      0
+    );
+    const clientReceiptAdjustmentsTotal = clientAdjustments
+      .filter((adjustment) => adjustment.date === selectedDate)
+      .reduce((sum, adjustment) => sum + adjustment.amount, 0);
+    const clientAdjustmentsTotal = -clientReceiptAdjustmentsTotal;
 
     const manualGains = otherGainsForDate.reduce((sum, g) => sum + g.amount, 0);
     const manualExpenses = otherExpensesForDate.reduce(
@@ -883,32 +1075,53 @@ export default function App() {
     );
 
     const totalGains =
-      autoPrixColis +
+      clientColisNous +
+      clientColisMvola +
       autoFraisLivraison +
-      pomanaiPrixColis +
-      zazatianaPrixColis +
+      recoveryAmount +
+      partnerPrixColis +
       partnerFraisLivraisonRecu +
+      Math.max(clientAdjustmentsTotal, 0) +
       manualGains;
 
-    const totalExpenses = totalRecusClientsFinance + manualExpenses;
+    const totalExpenses =
+      clientColisAReverser +
+      Math.max(-clientAdjustmentsTotal, 0) +
+      manualExpenses;
     const balance = totalGains - totalExpenses;
 
     return {
+      clientColisNous,
+      clientColisMvola,
+      clientColisDirect,
+      clientFraisNous,
+      clientFraisMvola,
+      clientFraisDirect,
       autoPrixColis,
       autoFraisLivraison,
       pomanaiPrixColis,
       zazatianaPrixColis,
+      partnerPrixColis,
       pomanaiFraisLivraisonRecu,
       zazatianaFraisLivraisonRecu,
       partnerFraisLivraisonRecu,
-      totalRecusClientsFinance,
+      totalRecusClientsFinance: clientColisAReverser,
+      recoveryAmount,
+      clientAdjustmentsTotal,
       manualGains,
       manualExpenses,
       totalGains,
       totalExpenses,
       balance,
     };
-  }, [deliveriesForDate, otherGains, otherExpenses, selectedDate]);
+  }, [
+    clientAdjustments,
+    deliveriesForDate,
+    otherGains,
+    otherExpenses,
+    payrollStats,
+    selectedDate,
+  ]);
 
   const buildPartnerStats = useCallback(
     (partnerName: string, purchases: PartnerPurchaseEntry[]) => {
@@ -1639,6 +1852,7 @@ setDeliveries((prev) => [data as Delivery, ...prev]);
           clientAdjustments={clientAdjustments.filter(
   (a) => a.client === selectedClientDetails
 )}
+          selectedDate={selectedDate}
           setClientAdjustments={setClientAdjustments}
           openDeliveryId={openDeliveryId}
           onBack={() => {

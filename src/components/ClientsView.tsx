@@ -91,6 +91,7 @@ type ClientDetailProps = {
   selectedClientGroup: ClientGroup | null;
   riders: Rider[];
   clientAdjustments: ClientAdjustment[];
+  selectedDate: string;
   setClientAdjustments: Dispatch<SetStateAction<ClientAdjustment[]>>;
   openDeliveryId: number | null;
   onBack: () => void;
@@ -104,6 +105,7 @@ export function ClientDetails({
   selectedClientGroup,
   riders,
   clientAdjustments,
+  selectedDate,
   setClientAdjustments,
   openDeliveryId,
   onBack,
@@ -113,7 +115,8 @@ export function ClientDetails({
   onDelete,
 }: ClientDetailProps) { 
   const [adjustmentLabel, setAdjustmentLabel] = useState("");
-const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentAmount, setAdjustmentAmount] = useState("");
+  const [adjustmentSign, setAdjustmentSign] = useState<"plus" | "minus">("plus");
   return (
     <section className="panel compactDetailPage">
       <div className="panelHeaderRow">
@@ -151,9 +154,28 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
       onChange={(e) => setAdjustmentLabel(e.target.value)}
     />
 
+    <div className="adjustmentSignToggle" aria-label="Sens de l'ajustement">
+      <button
+        type="button"
+        className={adjustmentSign === "plus" ? "activeAdjustmentSign" : ""}
+        onClick={() => setAdjustmentSign("plus")}
+      >
+        + Ajout
+      </button>
+      <button
+        type="button"
+        className={adjustmentSign === "minus" ? "activeAdjustmentSign" : ""}
+        onClick={() => setAdjustmentSign("minus")}
+      >
+        - Deduction
+      </button>
+    </div>
+
     <input
+      type="text"
       inputMode="decimal"
-      placeholder="Montant (+ ou -)"
+      pattern="-?[0-9]*[,.]?[0-9]*"
+      placeholder="Montant"
       value={adjustmentAmount}
       onChange={(e) => setAdjustmentAmount(e.target.value)}
     />
@@ -167,14 +189,17 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
         const normalizedAmount = normalizeAriaryInput(adjustmentAmount);
         if (!normalizedAmount) return;
 
-        const amount = Number(normalizedAmount);
+        const rawIsNegative = adjustmentAmount.trim().startsWith("-");
+        const amount =
+          (rawIsNegative || adjustmentSign === "minus" ? -1 : 1) *
+          Math.abs(Number(normalizedAmount));
 
         setClientAdjustments((prev) => [
           ...prev,
           {
             id: Date.now(),
             client: selectedClientGroup.client,
-            date: new Date().toISOString().slice(0, 10),
+            date: selectedDate,
             label: adjustmentLabel.trim(),
             type: amount < 0 ? "deduction" : "report",
             amount,
@@ -183,6 +208,7 @@ const [adjustmentAmount, setAdjustmentAmount] = useState("");
 
         setAdjustmentLabel("");
         setAdjustmentAmount("");
+        setAdjustmentSign("plus");
       }}
     >
       Ajouter
